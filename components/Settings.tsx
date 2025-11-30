@@ -1,13 +1,14 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { AVAILABLE_ROLES, SYSTEM_PERMISSIONS } from '../constants';
-import { SystemInfo, IdCardTemplate, CardElement, User, Permission } from '../types';
+import { SystemInfo, IdCardTemplate, CardElement, User, Permission, OfficialDocument } from '../types';
 import { 
   Save, Sparkles, Key, Building, Shield, Check, X, Upload, 
   Image as ImageIcon, CreditCard, Plus, Trash2, 
-  Move, Type, MousePointer2, Layers, AlignLeft, AlignCenter, AlignRight,
+  Move, Type, MousePointer2, Layers, AlignLeft, AlignCenter, AlignRight, AlignJustify,
   ArrowUp, ArrowDown, Maximize, AlertCircle, Grid3X3, Eye, Settings2, UserCheck, Lock, RefreshCw, CheckSquare, Square, UserPlus,
-  Cpu, MessageCircle, Landmark, Globe, EyeOff, Link as LinkIcon, AlertTriangle, FileText
+  Cpu, MessageCircle, Landmark, Globe, EyeOff, Link as LinkIcon, AlertTriangle, FileText,
+  Bot, Paperclip, Send, FileCheck, ScanLine, Bold, Italic, Underline, File, Palette, Minimize
 } from 'lucide-react';
 
 interface SettingsProps {
@@ -22,7 +23,10 @@ interface SettingsProps {
 const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, templates, onUpdateTemplates, usersList, onUpdateUsers }) => {
   const [activeTab, setActiveTab] = useState<'INFO' | 'ACCESS' | 'API' | 'STUDIO'>('INFO');
   
-  // STUDIO STATES
+  // STUDIO STATES - SUBTABS
+  const [studioMode, setStudioMode] = useState<'CARDS' | 'DOCS'>('CARDS');
+
+  // STUDIO - CARDS STATES
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(templates[0]?.id || '');
   const [studioView, setStudioView] = useState<'front' | 'back'>('front');
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
@@ -33,6 +37,21 @@ const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, tem
   
   const canvasRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef<{ x: number, y: number, initialElX: number, initialElY: number } | null>(null);
+
+  // STUDIO - DOCS STATES (Rich Editor)
+  const [documents, setDocuments] = useState<OfficialDocument[]>([
+      { id: 'doc1', title: 'Ofício Prefeitura - Poda', type: 'OFICIO', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), status: 'DRAFT', content: '<div>Ao Excelentíssimo Senhor Secretário de Obras,<br/><br/>Venho por meio deste solicitar a poda das árvores localizadas na Rua Principal, altura do número 100.<br/><br/>Atenciosamente,<br/>Presidente da Associação.</div>', pageSize: 'A4', orientation: 'PORTRAIT' }
+  ]);
+  const [activeDocId, setActiveDocId] = useState<string | null>('doc1');
+  const [docPrompt, setDocPrompt] = useState('');
+  const [aiChatHistory, setAiChatHistory] = useState<{role: 'user' | 'ai', text: string}[]>([{role: 'ai', text: 'Olá! Sou o assistente de documentos do S.I.E. Carregue um modelo PDF/DOC para eu aprender o estilo, ou peça para eu escrever um novo documento.'}]);
+  const [referenceFile, setReferenceFile] = useState<File | null>(null);
+  const [isProcessingAI, setIsProcessingAI] = useState(false);
+  const [isAnalyzingRef, setIsAnalyzingRef] = useState(false);
+  const [selectedImg, setSelectedImg] = useState<HTMLImageElement | null>(null); // For resizing
+  const refFileInput = useRef<HTMLInputElement>(null);
+  const docEditorRef = useRef<HTMLDivElement>(null);
+  const docImageInputRef = useRef<HTMLInputElement>(null);
 
   // ACCESS TAB STATES
   const [searchTerm, setSearchTerm] = useState('');
@@ -66,6 +85,7 @@ const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, tem
 
   const activeTemplate = templates.find(t => t.id === selectedTemplateId);
   const activeElement = activeTemplate?.elements.find(el => el.id === selectedElementId);
+  const activeDoc = documents.find(d => d.id === activeDocId);
 
   // --- GENERAL HANDLERS ---
   const handleSaveInfo = () => {
@@ -144,7 +164,7 @@ const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, tem
       return acc;
   }, {} as Record<string, Permission[]>);
 
-  // --- STUDIO LOGIC ---
+  // --- STUDIO (CARDS) LOGIC ---
   const handleCreateTemplate = () => {
     const newTemplate: IdCardTemplate = {
         id: `tpl_${Date.now()}`,
@@ -218,19 +238,6 @@ const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, tem
       setSelectedElementId(null);
   };
 
-  const moveLayer = (elementId: string, direction: 'up' | 'down') => {
-      if (!activeTemplate) return;
-      const index = activeTemplate.elements.findIndex(el => el.id === elementId);
-      if (index === -1) return;
-      const newElements = [...activeTemplate.elements];
-      if (direction === 'up' && index < newElements.length - 1) {
-          [newElements[index], newElements[index + 1]] = [newElements[index + 1], newElements[index]];
-      } else if (direction === 'down' && index > 0) {
-          [newElements[index], newElements[index - 1]] = [newElements[index - 1], newElements[index]];
-      }
-      updateTemplate({ elements: newElements });
-  };
-
   const handleMouseDown = (e: React.MouseEvent, elementId: string) => {
       e.stopPropagation();
       if (!activeTemplate) return;
@@ -263,6 +270,146 @@ const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, tem
       dragStartRef.current = null;
   };
 
+  // --- STUDIO (DOCS) LOGIC ---
+  const handleCreateDocument = () => {
+      const newDoc: OfficialDocument = {
+          id: `doc_${Date.now()}`,
+          title: 'Novo Documento',
+          type: 'OFICIO',
+          content: '<div></div>', // Empty content div
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          status: 'DRAFT',
+          pageSize: 'A4',
+          orientation: 'PORTRAIT'
+      };
+      setDocuments([...documents, newDoc]);
+      setActiveDocId(newDoc.id);
+  };
+
+  const handleDeleteDocument = (docId: string) => {
+      if (window.confirm('Tem certeza que deseja excluir este documento?')) {
+          const newDocs = documents.filter(d => d.id !== docId);
+          setDocuments(newDocs);
+          if (activeDocId === docId) setActiveDocId(null);
+      }
+  };
+
+  const handleUpdateDoc = (updates: Partial<OfficialDocument>) => {
+      if (!activeDocId) return;
+      setDocuments(prev => prev.map(d => d.id === activeDocId ? { ...d, ...updates, updatedAt: new Date().toISOString() } : d));
+  };
+
+  // Editor Actions
+  const execCmd = (command: string, value: string | undefined = undefined) => {
+      document.execCommand(command, false, value);
+      if (docEditorRef.current && activeDocId) {
+          handleUpdateDoc({ content: docEditorRef.current.innerHTML });
+      }
+  };
+
+  const handleImageUploadEditor = (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files[0]) {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+              if (ev.target?.result) {
+                  execCmd('insertImage', ev.target.result as string);
+              }
+          };
+          reader.readAsDataURL(e.target.files[0]);
+      }
+  };
+
+  const handleEditorDrop = (e: React.DragEvent) => {
+      e.preventDefault();
+      const files = e.dataTransfer.files;
+      if (files && files[0] && files[0].type.startsWith('image/')) {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+              if (ev.target?.result) {
+                  execCmd('insertImage', ev.target.result as string);
+              }
+          };
+          reader.readAsDataURL(files[0]);
+      }
+  };
+
+  const handleEditorClick = (e: React.MouseEvent) => {
+      if (e.target instanceof HTMLImageElement) {
+          setSelectedImg(e.target);
+      } else {
+          setSelectedImg(null);
+      }
+  };
+
+  const resizeImage = (percentage: number) => {
+      if (selectedImg) {
+          selectedImg.style.width = `${percentage}%`;
+          if (docEditorRef.current && activeDocId) {
+              handleUpdateDoc({ content: docEditorRef.current.innerHTML });
+          }
+      }
+  };
+
+  const handleReferenceUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files[0]) {
+          const file = e.target.files[0];
+          setReferenceFile(file);
+          setIsAnalyzingRef(true);
+          
+          // Simulation of OCR / Analysis
+          setTimeout(() => {
+              setIsAnalyzingRef(false);
+              setAiChatHistory(prev => [...prev, { role: 'ai', text: `Analisei o arquivo "${file.name}". Aprendi a estrutura e o estilo de redação. Como posso ajudar agora?` }]);
+              if (activeDocId) {
+                  handleUpdateDoc({ referenceFile: file.name });
+              }
+          }, 2000);
+      }
+  };
+
+  const handleAiGenerateDoc = () => {
+      if (!docPrompt) return;
+      
+      const prompt = docPrompt;
+      setDocPrompt('');
+      setAiChatHistory(prev => [...prev, { role: 'user', text: prompt }]);
+      setIsProcessingAI(true);
+
+      // Simulation of Gemini Generation
+      setTimeout(() => {
+          setIsProcessingAI(false);
+          let generatedContent = '';
+          const refText = referenceFile ? `Baseado no modelo "${referenceFile.name}", ` : '';
+          
+          if (prompt.toLowerCase().includes('poda')) {
+              generatedContent = `<div><b>OFÍCIO Nº 123/${new Date().getFullYear()}</b><br/><br/>Assunto: Solicitação de Poda de Árvore<br/><br/>Prezados Senhores,<br/><br/>${refText}Venho por meio deste solicitar a intervenção urgente para poda de árvore localizada em área de risco, conforme descrito em sua solicitação.<br/><br/>Atenciosamente,<br/><br/>Diretoria da Associação.</div>`;
+          } else if (prompt.toLowerCase().includes('ata')) {
+              generatedContent = `<div><center><b>ATA DA ASSEMBLEIA GERAL ORDINÁRIA</b></center><br/><br/>Aos ${new Date().getDate()} dias do mês de... realizou-se a assembleia para deliberar sobre ${prompt.replace('ata', '').trim()}.<br/><br/>${refText}Seguindo o padrão estatutário...</div>`;
+          } else {
+              generatedContent = `<div>${refText}Aqui está o esboço do documento solicitado:<br/><br/>Referente a: ${prompt}<br/><br/>[Inserir corpo do texto formal aqui seguindo as normas da ABNT e o estilo da associação].<br/><br/>Atenciosamente.</div>`;
+          }
+
+          setAiChatHistory(prev => [...prev, { role: 'ai', text: 'Gerei o documento com base no seu pedido e no modelo de referência. O texto foi inserido no editor.' }]);
+          
+          if (activeDocId) {
+              handleUpdateDoc({ content: generatedContent });
+              if (docEditorRef.current) {
+                  docEditorRef.current.innerHTML = generatedContent;
+              }
+          }
+      }, 1500);
+  };
+
+  // Sync editor content when switching docs
+  useEffect(() => {
+      if (docEditorRef.current && activeDoc) {
+          if (docEditorRef.current.innerHTML !== activeDoc.content) {
+              docEditorRef.current.innerHTML = activeDoc.content;
+          }
+      }
+  }, [activeDocId]);
+
   return (
     <div className="space-y-8 animate-fade-in" onMouseUp={handleMouseUp} onMouseMove={handleMouseMove}>
       {/* Header & Tabs */}
@@ -280,7 +427,7 @@ const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, tem
                   activeTab === tab ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50 hover:text-indigo-600'
                 }`}
               >
-                {tab === 'INFO' ? 'Associação' : tab === 'ACCESS' ? 'Usuários do Sistema' : tab === 'STUDIO' ? 'Studio Carteirinha' : 'Integrações'}
+                {tab === 'INFO' ? 'Associação' : tab === 'ACCESS' ? 'Usuários do Sistema' : tab === 'STUDIO' ? 'Studio IA' : 'Integrações'}
               </button>
           ))}
         </div>
@@ -473,101 +620,338 @@ const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, tem
 
       {/* --- TAB: STUDIO --- */}
       {activeTab === 'STUDIO' && (
-          <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-220px)] min-h-[800px]">
-              {/* (Código do Studio mantido inalterado) */}
-              <div className="w-full lg:w-72 bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
-                  <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Seus Modelos</span>
-                      <button onClick={handleCreateTemplate} className="text-indigo-600 hover:bg-indigo-100 p-2 rounded-lg transition-colors"><Plus size={18}/></button>
+          <div className="space-y-6">
+              {/* STUDIO SUB-NAVIGATION */}
+              <div className="flex justify-center pb-4">
+                  <div className="bg-slate-100 p-1 rounded-xl flex gap-1 shadow-inner border border-slate-200">
+                      <button onClick={() => setStudioMode('CARDS')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${studioMode === 'CARDS' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Carteirinhas</button>
+                      <button onClick={() => setStudioMode('DOCS')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${studioMode === 'DOCS' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Documentos Inteligentes</button>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
-                      {templates.map(tpl => (
-                          <div 
-                            key={tpl.id} 
-                            onClick={() => { setSelectedTemplateId(tpl.id); setSelectedElementId(null); }}
-                            className={`p-4 rounded-xl border-2 cursor-pointer transition-all relative group ${selectedTemplateId === tpl.id ? 'border-indigo-500 bg-indigo-50/50 shadow-sm' : 'border-transparent hover:bg-slate-50 hover:border-slate-200'}`}
-                          >
-                              <div className="font-bold text-slate-800 text-sm mb-1">{tpl.name}</div>
-                              <div className="flex justify-between items-center mt-2">
-                                <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full font-mono">{tpl.width}x{tpl.height}px</span>
-                                <span className="text-[10px] text-slate-400 capitalize flex items-center gap-1">
-                                    {tpl.orientation === 'landscape' ? <div className="w-3 h-2 border border-slate-400"></div> : <div className="w-2 h-3 border border-slate-400"></div>}
-                                    {tpl.orientation === 'landscape' ? 'Paisagem' : 'Retrato'}
-                                </span>
-                              </div>
-                              {selectedTemplateId === tpl.id && <div className="absolute right-2 top-2 w-2 h-2 bg-indigo-500 rounded-full"></div>}
+              </div>
+
+              {studioMode === 'CARDS' ? (
+                  <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-300px)] min-h-[800px]">
+                      {/* ID CARD SIDEBAR */}
+                      <div className="w-full lg:w-72 bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
+                          <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Seus Modelos</span>
+                              <button onClick={handleCreateTemplate} className="text-indigo-600 hover:bg-indigo-100 p-2 rounded-lg transition-colors"><Plus size={18}/></button>
                           </div>
-                      ))}
-                  </div>
-              </div>
+                          <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
+                              {templates.map(tpl => (
+                                  <div 
+                                    key={tpl.id} 
+                                    onClick={() => { setSelectedTemplateId(tpl.id); setSelectedElementId(null); }}
+                                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all relative group ${selectedTemplateId === tpl.id ? 'border-indigo-500 bg-indigo-50/50 shadow-sm' : 'border-transparent hover:bg-slate-50 hover:border-slate-200'}`}
+                                  >
+                                      <div className="font-bold text-slate-800 text-sm mb-1">{tpl.name}</div>
+                                      <div className="flex justify-between items-center mt-2">
+                                        <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full font-mono">{tpl.width}x{tpl.height}px</span>
+                                        <span className="text-[10px] text-slate-400 capitalize flex items-center gap-1">
+                                            {tpl.orientation === 'landscape' ? <div className="w-3 h-2 border border-slate-400"></div> : <div className="w-2 h-3 border border-slate-400"></div>}
+                                            {tpl.orientation === 'landscape' ? 'Paisagem' : 'Retrato'}
+                                        </span>
+                                      </div>
+                                      {selectedTemplateId === tpl.id && <div className="absolute right-2 top-2 w-2 h-2 bg-indigo-500 rounded-full"></div>}
+                                  </div>
+                              ))}
+                          </div>
+                      </div>
 
-              {/* CENTER CANVAS */}
-              <div className="flex-1 bg-slate-100 rounded-2xl border border-slate-200 shadow-inner p-6 flex flex-col items-center justify-center relative overflow-hidden select-none group/canvas">
-                  {/* ... Toolbar & Canvas rendering (same as before) ... */}
-                  {activeTemplate ? (
-                      <>
-                        <div className="absolute top-4 left-4 right-4 flex justify-between items-start z-20 pointer-events-none">
-                             <div className="flex flex-col gap-2 pointer-events-auto">
-                                <div className="bg-white/90 backdrop-blur rounded-xl shadow-lg border border-slate-200 p-1 flex gap-1">
-                                    <button onClick={() => setStudioView('front')} className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${studioView === 'front' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}>FRENTE</button>
-                                    <button onClick={() => setStudioView('back')} className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${studioView === 'back' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}>VERSO</button>
-                                </div>
-                                <div className="bg-white/90 backdrop-blur rounded-xl shadow-lg border border-slate-200 p-2 flex gap-2">
-                                    <button onClick={() => addElement('text-dynamic')} className="p-2 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-slate-600 transition-colors tooltip" title="Adicionar Texto Dinâmico"><Type size={18}/></button>
-                                    <button onClick={() => addElement('text-static')} className="p-2 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-slate-600 transition-colors tooltip" title="Adicionar Texto Fixo"><Type size={18} className="font-serif"/></button>
-                                    <button onClick={() => addElement('image')} className="p-2 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-slate-600 transition-colors tooltip" title="Adicionar Imagem"><ImageIcon size={18}/></button>
-                                    <button onClick={() => addElement('shape')} className="p-2 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-slate-600 transition-colors tooltip" title="Adicionar Forma/Fundo"><Maximize size={18}/></button>
-                                </div>
-                             </div>
-                             <div className="flex gap-2 pointer-events-auto">
-                                <div className="bg-white/90 backdrop-blur rounded-xl shadow-lg border border-slate-200 p-2 flex gap-1">
-                                    <button onClick={() => setShowGrid(!showGrid)} className={`p-2 rounded-lg transition-colors ${showGrid ? 'bg-indigo-100 text-indigo-700' : 'text-slate-400 hover:text-slate-600'}`} title="Grade"><Grid3X3 size={18}/></button>
-                                    <button onClick={() => setShowGuides(!showGuides)} className={`p-2 rounded-lg transition-colors ${showGuides ? 'bg-indigo-100 text-indigo-700' : 'text-slate-400 hover:text-slate-600'}`} title="Margens"><Eye size={18}/></button>
-                                </div>
-                                <button onClick={saveCurrentTemplate} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold shadow-lg border border-white/20 transition-all ${saveSuccess ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>{saveSuccess ? <Check size={16}/> : <Save size={16}/>}{saveSuccess ? 'Salvo!' : 'Salvar'}</button>
-                             </div>
-                        </div>
-                        <div className="relative group perspective shadow-2xl rounded-xl">
-                            <div ref={canvasRef} className="relative bg-white overflow-hidden transition-all duration-300 ring-4 ring-white shadow-lg" style={{ width: `${activeTemplate.orientation === 'landscape' ? activeTemplate.width : activeTemplate.height}px`, height: `${activeTemplate.orientation === 'landscape' ? activeTemplate.height : activeTemplate.width}px`, background: studioView === 'front' ? activeTemplate.frontBackground : activeTemplate.backBackground, borderRadius: '12px' }} onClick={() => setSelectedElementId(null)}>
-                                {showGrid && <div className="absolute inset-0 pointer-events-none opacity-[0.05] z-0" style={{ backgroundImage: 'linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>}
-                                {showGuides && <div className="absolute inset-[5mm] border border-dashed border-rose-400/50 pointer-events-none z-50"></div>}
-                                {activeTemplate.elements.filter(el => el.layer === studioView).map(el => (
-                                    <div key={el.id} onMouseDown={(e) => handleMouseDown(e, el.id)} style={{ position: 'absolute', left: `${el.x}%`, top: `${el.y}%`, width: el.width ? `${el.width}px` : 'auto', height: el.height ? `${el.height}px` : 'auto', ...el.style, cursor: isDragging && selectedElementId === el.id ? 'grabbing' : 'grab', outline: selectedElementId === el.id ? '2px solid #4f46e5' : '1px dashed transparent', zIndex: selectedElementId === el.id ? 100 : undefined, userSelect: 'none' }} className={`group/el hover:outline-indigo-300 min-w-[20px] min-h-[20px] ${selectedElementId === el.id ? 'shadow-2xl' : ''}`}>
-                                        {el.type === 'text-dynamic' && (el.field === 'name' ? 'NOME DO USUÁRIO' : `{${el.field}}`)}
-                                        {el.type === 'text-static' && el.content}
-                                        {el.type === 'image' && (<div className="w-full h-full bg-slate-100 flex items-center justify-center overflow-hidden border border-slate-200">{el.field === 'system.logo' && systemInfo.logoUrl ? <img src={systemInfo.logoUrl} className="w-full h-full object-cover"/> : <ImageIcon size={16} className="text-slate-300"/>}</div>)}
-                                        {el.type === 'qrcode' && <div className="w-full h-full bg-slate-900 flex items-center justify-center text-white text-[8px] border border-white">QR</div>}
+                      {/* CENTER CANVAS */}
+                      <div className="flex-1 bg-slate-100 rounded-2xl border border-slate-200 shadow-inner p-6 flex flex-col items-center justify-center relative overflow-hidden select-none group/canvas">
+                          {activeTemplate ? (
+                              <>
+                                <div className="absolute top-4 left-4 right-4 flex justify-between items-start z-20 pointer-events-none">
+                                    <div className="flex flex-col gap-2 pointer-events-auto">
+                                        <div className="bg-white/90 backdrop-blur rounded-xl shadow-lg border border-slate-200 p-1 flex gap-1">
+                                            <button onClick={() => setStudioView('front')} className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${studioView === 'front' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}>FRENTE</button>
+                                            <button onClick={() => setStudioView('back')} className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${studioView === 'back' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}>VERSO</button>
+                                        </div>
+                                        <div className="bg-white/90 backdrop-blur rounded-xl shadow-lg border border-slate-200 p-2 flex gap-2">
+                                            <button onClick={() => addElement('text-dynamic')} className="p-2 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-slate-600 transition-colors tooltip" title="Adicionar Texto Dinâmico"><Type size={18}/></button>
+                                            <button onClick={() => addElement('text-static')} className="p-2 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-slate-600 transition-colors tooltip" title="Adicionar Texto Fixo"><Type size={18} className="font-serif"/></button>
+                                            <button onClick={() => addElement('image')} className="p-2 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-slate-600 transition-colors tooltip" title="Adicionar Imagem"><ImageIcon size={18}/></button>
+                                            <button onClick={() => addElement('shape')} className="p-2 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-slate-600 transition-colors tooltip" title="Adicionar Forma/Fundo"><Maximize size={18}/></button>
+                                        </div>
                                     </div>
-                                ))}
-                            </div>
-                        </div>
-                      </>
-                  ) : <div className="flex flex-col items-center justify-center text-slate-400"><CreditCard size={48} className="mb-4 opacity-20"/><p className="font-medium">Selecione um modelo</p></div>}
-              </div>
-
-              {/* RIGHT: PROPERTY INSPECTOR */}
-              <div className="w-full lg:w-80 bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col">
-                  {activeTemplate ? (
-                      <div className="flex-1 overflow-y-auto custom-scrollbar">
-                          {!selectedElementId && (
-                            <div className="p-6 space-y-6">
-                                <h4 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-3 flex items-center gap-2"><Settings2 size={16} className="text-indigo-600"/> Configuração do Modelo</h4>
-                                <div><label className="text-xs font-bold text-slate-500 mb-1 block">Nome do Modelo</label><input type="text" value={activeTemplate.name} onChange={(e) => updateTemplate({ name: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500"/></div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div><label className="text-xs font-bold text-slate-500 mb-1 block">Largura (px)</label><input type="number" value={activeTemplate.width} onChange={(e) => updateTemplate({ width: Number(e.target.value) })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500"/></div>
-                                    <div><label className="text-xs font-bold text-slate-500 mb-1 block">Altura (px)</label><input type="number" value={activeTemplate.height} onChange={(e) => updateTemplate({ height: Number(e.target.value) })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500"/></div>
+                                    <div className="flex gap-2 pointer-events-auto">
+                                        <div className="bg-white/90 backdrop-blur rounded-xl shadow-lg border border-slate-200 p-2 flex gap-1">
+                                            <button onClick={() => setShowGrid(!showGrid)} className={`p-2 rounded-lg transition-colors ${showGrid ? 'bg-indigo-100 text-indigo-700' : 'text-slate-400 hover:text-slate-600'}`} title="Grade"><Grid3X3 size={18}/></button>
+                                            <button onClick={() => setShowGuides(!showGuides)} className={`p-2 rounded-lg transition-colors ${showGuides ? 'bg-indigo-100 text-indigo-700' : 'text-slate-400 hover:text-slate-600'}`} title="Margens"><Eye size={18}/></button>
+                                        </div>
+                                        <button onClick={saveCurrentTemplate} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold shadow-lg border border-white/20 transition-all ${saveSuccess ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>{saveSuccess ? <Check size={16}/> : <Save size={16}/>}{saveSuccess ? 'Salvo!' : 'Salvar'}</button>
+                                    </div>
                                 </div>
-                            </div>
-                          )}
-                          {selectedElementId && activeElement && (
-                              <div className="p-6 space-y-6">
-                                  <div className="flex justify-between items-center border-b border-slate-100 pb-3"><h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">Propriedades</h4><button onClick={() => removeElement(activeElement.id)} className="text-rose-500 hover:bg-rose-50 p-1.5 rounded-lg transition-colors"><Trash2 size={16}/></button></div>
-                                  {activeElement.type === 'text-dynamic' && (<div><label className="text-xs font-bold text-slate-500 mb-1 block">Campo Dinâmico</label><select value={activeElement.field} onChange={(e) => updateElement(activeElement.id, { field: e.target.value as any })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500"><option value="name">Nome</option><option value="role">Cargo</option><option value="cpfCnpj">CPF</option></select></div>)}
+                                <div className="relative group perspective shadow-2xl rounded-xl">
+                                    <div ref={canvasRef} className="relative bg-white overflow-hidden transition-all duration-300 ring-4 ring-white shadow-lg" style={{ width: `${activeTemplate.orientation === 'landscape' ? activeTemplate.width : activeTemplate.height}px`, height: `${activeTemplate.orientation === 'landscape' ? activeTemplate.height : activeTemplate.width}px`, background: studioView === 'front' ? activeTemplate.frontBackground : activeTemplate.backBackground, borderRadius: '12px' }} onClick={() => setSelectedElementId(null)}>
+                                        {showGrid && <div className="absolute inset-0 pointer-events-none opacity-[0.05] z-0" style={{ backgroundImage: 'linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>}
+                                        {showGuides && <div className="absolute inset-[5mm] border border-dashed border-rose-400/50 pointer-events-none z-50"></div>}
+                                        {activeTemplate.elements.filter(el => el.layer === studioView).map(el => (
+                                            <div key={el.id} onMouseDown={(e) => handleMouseDown(e, el.id)} style={{ position: 'absolute', left: `${el.x}%`, top: `${el.y}%`, width: el.width ? `${el.width}px` : 'auto', height: el.height ? `${el.height}px` : 'auto', ...el.style, cursor: isDragging && selectedElementId === el.id ? 'grabbing' : 'grab', outline: selectedElementId === el.id ? '2px solid #4f46e5' : '1px dashed transparent', zIndex: selectedElementId === el.id ? 100 : undefined, userSelect: 'none' }} className={`group/el hover:outline-indigo-300 min-w-[20px] min-h-[20px] ${selectedElementId === el.id ? 'shadow-2xl' : ''}`}>
+                                                {el.type === 'text-dynamic' && (el.field === 'name' ? 'NOME DO USUÁRIO' : `{${el.field}}`)}
+                                                {el.type === 'text-static' && el.content}
+                                                {el.type === 'image' && (<div className="w-full h-full bg-slate-100 flex items-center justify-center overflow-hidden border border-slate-200">{el.field === 'system.logo' && systemInfo.logoUrl ? <img src={systemInfo.logoUrl} className="w-full h-full object-cover"/> : <ImageIcon size={16} className="text-slate-300"/>}</div>)}
+                                                {el.type === 'qrcode' && <div className="w-full h-full bg-black flex flex-col items-center justify-center text-white p-1"><div className="flex flex-wrap gap-0.5 justify-center">{Array.from({length: 16}).map((_, i) => (<div key={i} className={`w-1.5 h-1.5 ${Math.random() > 0.5 ? 'bg-white' : 'bg-black'}`}></div>))}</div></div>)}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                              </>
+                          ) : <div className="flex flex-col items-center justify-center text-slate-400"><CreditCard size={48} className="mb-4 opacity-20"/><p className="font-medium">Selecione um modelo</p></div>}
+                      </div>
+
+                      {/* RIGHT: PROPERTY INSPECTOR */}
+                      <div className="w-full lg:w-80 bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col">
+                          {activeTemplate ? (
+                              <div className="flex-1 overflow-y-auto custom-scrollbar">
+                                  {!selectedElementId && (
+                                    <div className="p-6 space-y-6">
+                                        <h4 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-3 flex items-center gap-2"><Settings2 size={16} className="text-indigo-600"/> Configuração do Modelo</h4>
+                                        <div><label className="text-xs font-bold text-slate-500 mb-1 block">Nome do Modelo</label><input type="text" value={activeTemplate.name} onChange={(e) => updateTemplate({ name: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500"/></div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div><label className="text-xs font-bold text-slate-500 mb-1 block">Largura (px)</label><input type="number" value={activeTemplate.width} onChange={(e) => updateTemplate({ width: Number(e.target.value) })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500"/></div>
+                                            <div><label className="text-xs font-bold text-slate-500 mb-1 block">Altura (px)</label><input type="number" value={activeTemplate.height} onChange={(e) => updateTemplate({ height: Number(e.target.value) })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500"/></div>
+                                        </div>
+                                    </div>
+                                  )}
+                                  {selectedElementId && activeElement && (
+                                      <div className="p-6 space-y-6">
+                                          <div className="flex justify-between items-center border-b border-slate-100 pb-3"><h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">Propriedades</h4><button onClick={() => removeElement(activeElement.id)} className="text-rose-500 hover:bg-rose-50 p-1.5 rounded-lg transition-colors"><Trash2 size={16}/></button></div>
+                                          {activeElement.type === 'text-dynamic' && (<div><label className="text-xs font-bold text-slate-500 mb-1 block">Campo Dinâmico</label><select value={activeElement.field} onChange={(e) => updateElement(activeElement.id, { field: e.target.value as any })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500"><option value="name">Nome</option><option value="role">Cargo</option><option value="cpfCnpj">CPF</option></select></div>)}
+                                      </div>
+                                  )}
+                              </div>
+                          ) : <div className="p-8 text-center text-slate-400 flex items-center justify-center h-full"><p>Nenhum modelo selecionado.</p></div>}
+                      </div>
+                  </div>
+              ) : (
+                  // --- DOCUMENTS MODE (RICH EDITOR) ---
+                  <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-300px)] min-h-[800px]">
+                      {/* SIDEBAR: SAVED DOCUMENTS */}
+                      <div className="w-full lg:w-64 bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
+                          <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Biblioteca</span>
+                              <button onClick={handleCreateDocument} className="text-indigo-600 hover:bg-indigo-100 p-2 rounded-lg transition-colors"><Plus size={18}/></button>
+                          </div>
+                          <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
+                              {documents.map(doc => (
+                                  <div 
+                                    key={doc.id}
+                                    onClick={() => setActiveDocId(doc.id)}
+                                    className={`p-3 rounded-xl border cursor-pointer transition-all relative group ${activeDocId === doc.id ? 'bg-indigo-50 border-indigo-200 shadow-sm' : 'bg-white border-transparent hover:bg-slate-50 hover:border-slate-200'}`}
+                                  >
+                                      <p className={`text-sm font-bold ${activeDocId === doc.id ? 'text-indigo-700' : 'text-slate-700'}`}>{doc.title}</p>
+                                      <div className="flex justify-between items-center mt-1">
+                                          <span className="text-[10px] text-slate-400 uppercase font-bold">{doc.type}</span>
+                                          <span className="text-[10px] text-slate-400">{new Date(doc.updatedAt).toLocaleDateString()}</span>
+                                      </div>
+                                      <button 
+                                        onClick={(e) => { e.stopPropagation(); handleDeleteDocument(doc.id); }}
+                                        className="absolute top-2 right-2 text-rose-400 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity p-1"
+                                      >
+                                          <Trash2 size={14}/>
+                                      </button>
+                                  </div>
+                              ))}
+                          </div>
+                      </div>
+
+                      {/* CENTER: EDITOR */}
+                      <div className="flex-1 bg-slate-600 rounded-2xl border border-slate-700 flex flex-col overflow-hidden relative shadow-inner">
+                          {activeDoc ? (
+                              <>
+                                {/* Editor Toolbar */}
+                                <div className="p-2 border-b border-slate-200 bg-white flex items-center justify-between gap-2 z-10 sticky top-0 shadow-sm flex-wrap">
+                                    <div className="flex items-center gap-1">
+                                        <button onClick={() => execCmd('bold')} className="p-2 hover:bg-slate-100 rounded text-slate-600" title="Negrito"><Bold size={16}/></button>
+                                        <button onClick={() => execCmd('italic')} className="p-2 hover:bg-slate-100 rounded text-slate-600" title="Itálico"><Italic size={16}/></button>
+                                        <button onClick={() => execCmd('underline')} className="p-2 hover:bg-slate-100 rounded text-slate-600" title="Sublinhado"><Underline size={16}/></button>
+                                        <div className="w-px h-6 bg-slate-200 mx-1"></div>
+                                        <button onClick={() => execCmd('justifyLeft')} className="p-2 hover:bg-slate-100 rounded text-slate-600" title="Esquerda"><AlignLeft size={16}/></button>
+                                        <button onClick={() => execCmd('justifyCenter')} className="p-2 hover:bg-slate-100 rounded text-slate-600" title="Centro"><AlignCenter size={16}/></button>
+                                        <button onClick={() => execCmd('justifyRight')} className="p-2 hover:bg-slate-100 rounded text-slate-600" title="Direita"><AlignRight size={16}/></button>
+                                        <button onClick={() => execCmd('justifyFull')} className="p-2 hover:bg-slate-100 rounded text-slate-600" title="Justificado"><AlignJustify size={16}/></button>
+                                        <div className="w-px h-6 bg-slate-200 mx-1"></div>
+                                        
+                                        {/* Font Family */}
+                                        <select onChange={(e) => execCmd('fontName', e.target.value)} className="w-24 p-1.5 text-xs border border-slate-200 rounded-lg outline-none cursor-pointer hover:bg-slate-50">
+                                            <option value="Arial">Arial</option>
+                                            <option value="Times New Roman">Times</option>
+                                            <option value="Courier New">Courier</option>
+                                            <option value="Georgia">Georgia</option>
+                                            <option value="Verdana">Verdana</option>
+                                        </select>
+
+                                        {/* Font Size */}
+                                        <select onChange={(e) => execCmd('fontSize', e.target.value)} className="w-16 p-1.5 text-xs border border-slate-200 rounded-lg outline-none cursor-pointer hover:bg-slate-50" title="Tamanho da Fonte">
+                                            <option value="1">10px</option>
+                                            <option value="2">13px</option>
+                                            <option value="3">16px</option>
+                                            <option value="4">18px</option>
+                                            <option value="5">24px</option>
+                                            <option value="6">32px</option>
+                                            <option value="7">48px</option>
+                                        </select>
+
+                                        {/* Color Picker */}
+                                        <label className="p-2 hover:bg-slate-100 rounded cursor-pointer relative flex items-center justify-center" title="Cor do Texto">
+                                            <Palette size={16} className="text-slate-600"/>
+                                            <input type="color" className="absolute opacity-0 w-full h-full cursor-pointer" onChange={(e) => execCmd('foreColor', e.target.value)} />
+                                        </label>
+
+                                        <div className="w-px h-6 bg-slate-200 mx-1"></div>
+                                        <input type="file" ref={docImageInputRef} className="hidden" accept="image/*" onChange={handleImageUploadEditor}/>
+                                        <button onClick={() => docImageInputRef.current?.click()} className="p-2 hover:bg-slate-100 rounded text-slate-600" title="Inserir Imagem"><ImageIcon size={16}/></button>
+                                    </div>
+
+                                    {/* Image Resize Controls (Visible when image selected) */}
+                                    {selectedImg && (
+                                        <div className="flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100 animate-fade-in">
+                                            <span className="text-[10px] font-bold text-indigo-700 uppercase mr-1">Imagem:</span>
+                                            <button onClick={() => resizeImage(25)} className="px-2 py-1 bg-white rounded text-[10px] font-bold text-indigo-600 hover:bg-indigo-100">25%</button>
+                                            <button onClick={() => resizeImage(50)} className="px-2 py-1 bg-white rounded text-[10px] font-bold text-indigo-600 hover:bg-indigo-100">50%</button>
+                                            <button onClick={() => resizeImage(100)} className="px-2 py-1 bg-white rounded text-[10px] font-bold text-indigo-600 hover:bg-indigo-100">100%</button>
+                                            <button onClick={() => resizeImage(0)} title="Tamanho Original" className="px-2 py-1 bg-white rounded text-[10px] font-bold text-indigo-600 hover:bg-indigo-100"><Maximize size={10}/></button>
+                                        </div>
+                                    )}
+
+                                    <div className="flex items-center gap-2 ml-auto">
+                                        <select 
+                                            value={activeDoc.pageSize || 'A4'} 
+                                            onChange={(e) => handleUpdateDoc({ pageSize: e.target.value as any })}
+                                            className="bg-slate-50 border border-slate-200 text-xs font-bold rounded-lg px-2 py-1 outline-none"
+                                        >
+                                            <option value="A4">A4 (210x297mm)</option>
+                                            <option value="LETTER">Carta (216x279mm)</option>
+                                        </select>
+                                        <select 
+                                            value={activeDoc.orientation || 'PORTRAIT'} 
+                                            onChange={(e) => handleUpdateDoc({ orientation: e.target.value as any })}
+                                            className="bg-slate-50 border border-slate-200 text-xs font-bold rounded-lg px-2 py-1 outline-none"
+                                        >
+                                            <option value="PORTRAIT">Retrato</option>
+                                            <option value="LANDSCAPE">Paisagem</option>
+                                        </select>
+                                        <button onClick={() => alert('Documento salvo!')} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-all ml-2"><Save size={14}/> Salvar</button>
+                                    </div>
+                                </div>
+
+                                {/* Title Edit */}
+                                <div className="px-6 py-4 bg-white border-b border-slate-100">
+                                    <input 
+                                        type="text" 
+                                        value={activeDoc.title} 
+                                        onChange={(e) => handleUpdateDoc({ title: e.target.value })} 
+                                        className="w-full text-xl font-bold text-slate-800 outline-none placeholder-slate-400"
+                                        placeholder="Título do Documento"
+                                    />
+                                    <div className="flex items-center gap-2 mt-2">
+                                        <span className="text-xs font-bold text-slate-400 uppercase">Tipo:</span>
+                                        <select 
+                                            value={activeDoc.type} 
+                                            onChange={(e) => handleUpdateDoc({ type: e.target.value as any })} 
+                                            className="bg-transparent text-xs font-bold text-indigo-600 outline-none cursor-pointer hover:text-indigo-800"
+                                        >
+                                            <option value="OFICIO">Ofício</option>
+                                            <option value="ATA">Ata de Reunião</option>
+                                            <option value="MEMORANDO">Memorando</option>
+                                            <option value="CIRCULAR">Circular</option>
+                                            <option value="DECLARACAO">Declaração</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Main Editor Area (Paper Simulation) */}
+                                <div className="flex-1 overflow-auto bg-slate-600 p-8 flex justify-center custom-scrollbar" onDrop={handleEditorDrop} onDragOver={(e) => e.preventDefault()} onClick={handleEditorClick}>
+                                    <div 
+                                        ref={docEditorRef}
+                                        contentEditable
+                                        className="bg-white shadow-2xl outline-none p-[20mm] text-slate-800 font-serif leading-relaxed text-sm transition-all"
+                                        style={{ 
+                                            width: activeDoc.orientation === 'LANDSCAPE' ? (activeDoc.pageSize === 'LETTER' ? '279mm' : '297mm') : (activeDoc.pageSize === 'LETTER' ? '216mm' : '210mm'),
+                                            minHeight: activeDoc.orientation === 'LANDSCAPE' ? (activeDoc.pageSize === 'LETTER' ? '216mm' : '210mm') : (activeDoc.pageSize === 'LETTER' ? '279mm' : '297mm'),
+                                        }}
+                                        dangerouslySetInnerHTML={{ __html: activeDoc.content }}
+                                        onInput={(e) => handleUpdateDoc({ content: e.currentTarget.innerHTML })}
+                                    ></div>
+                                </div>
+                              </>
+                          ) : (
+                              <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                                  <FileText size={48} className="mb-4 opacity-20"/>
+                                  <p>Selecione ou crie um documento.</p>
                               </div>
                           )}
                       </div>
-                  ) : <div className="p-8 text-center text-slate-400 flex items-center justify-center h-full"><p>Nenhum modelo selecionado.</p></div>}
-              </div>
+
+                      {/* RIGHT: AI ASSISTANT */}
+                      <div className="w-full lg:w-80 bg-slate-900 rounded-2xl shadow-xl flex flex-col overflow-hidden border border-slate-800">
+                          <div className="p-4 border-b border-slate-800 bg-slate-900 flex items-center gap-2">
+                              <Bot className="text-indigo-400" size={20}/>
+                              <span className="font-bold text-white text-sm">Assistente IA</span>
+                          </div>
+                          
+                          {/* File Upload / Reference */}
+                          <div className="p-4 bg-slate-800/50 border-b border-slate-800">
+                              <input type="file" ref={refFileInput} className="hidden" accept=".pdf,.doc,.docx,.txt" onChange={handleReferenceUpload} />
+                              <div 
+                                onClick={() => refFileInput.current?.click()}
+                                className={`border-2 border-dashed border-slate-700 rounded-xl p-4 text-center cursor-pointer hover:bg-slate-800 transition-all ${isAnalyzingRef ? 'animate-pulse' : ''}`}
+                              >
+                                  {isAnalyzingRef ? (
+                                      <div className="text-indigo-400 text-xs font-bold flex flex-col items-center gap-2">
+                                          <ScanLine className="animate-spin" size={20}/> Analisando estrutura...
+                                      </div>
+                                  ) : referenceFile ? (
+                                      <div className="text-emerald-400 text-xs font-bold flex flex-col items-center gap-2">
+                                          <FileCheck size={20}/> Modelo Aprendido: <br/>{referenceFile.name}
+                                      </div>
+                                  ) : (
+                                      <div className="text-slate-500 text-xs font-medium flex flex-col items-center gap-2">
+                                          <Paperclip size={20}/> Anexar Modelo (PDF/DOC)
+                                      </div>
+                                  )}
+                              </div>
+                          </div>
+
+                          {/* Chat Area */}
+                          <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                              {aiChatHistory.map((msg, idx) => (
+                                  <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                      <div className={`max-w-[85%] p-3 rounded-xl text-xs leading-relaxed ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-slate-800 text-slate-300 rounded-bl-none'}`}>
+                                          {msg.text}
+                                      </div>
+                                  </div>
+                              ))}
+                              {isProcessingAI && (
+                                  <div className="flex justify-start">
+                                      <div className="bg-slate-800 text-slate-400 p-3 rounded-xl rounded-bl-none text-xs flex items-center gap-2">
+                                          <Sparkles size={12} className="animate-spin"/> Escrevendo documento...
+                                      </div>
+                                  </div>
+                              )}
+                          </div>
+
+                          {/* Input Area */}
+                          <div className="p-4 bg-slate-900 border-t border-slate-800">
+                              <div className="relative">
+                                  <input 
+                                    type="text" 
+                                    value={docPrompt} 
+                                    onChange={(e) => setDocPrompt(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleAiGenerateDoc()}
+                                    placeholder="Ex: Crie um ofício sobre..." 
+                                    className="w-full bg-slate-800 text-white text-sm rounded-xl pl-4 pr-10 py-3 outline-none focus:ring-1 focus:ring-indigo-500 placeholder-slate-500"
+                                  />
+                                  <button onClick={handleAiGenerateDoc} disabled={isProcessingAI || !docPrompt} className="absolute right-2 top-1/2 -translate-y-1/2 text-indigo-400 hover:text-white p-1.5 rounded-lg transition-colors disabled:opacity-50">
+                                      <Send size={16}/>
+                                  </button>
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+              )}
           </div>
       )}
 

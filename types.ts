@@ -316,3 +316,17 @@ export interface DemographicStats {
         trashCollection: number;
     };
 }
+
+// --- OFFICIAL DOCUMENTS (NEW) ---
+export interface OfficialDocument {
+    id: string;
+    title: string;
+    type: 'OFICIO' | 'ATA' | 'MEMORANDO' | 'CIRCULAR' | 'DECLARACAO';
+    content: string; // HTML Content
+    createdAt: string;
+    updatedAt: string;
+    referenceFile?: string; // Name of the uploaded reference model
+    status: 'DRAFT' | 'FINAL';
+    pageSize?: 'A4' | 'LETTER'; // Configuração de Tamanho
+    orientation?: 'PORTRAIT' | 'LANDSCAPE'; // Configuração de Orientação
+}
