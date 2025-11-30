@@ -130,7 +130,7 @@ const Surveys: React.FC = () => {
                 <>
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                         <div>
-                            <h2 className="text-2xl font-bold text-slate-800">Pesquisas & Censo</h2>
+                            <h2 className="text-2xl font-bold text-slate-800">Censo & Pesquisas</h2>
                             <p className="text-sm text-slate-500 mt-1 font-medium">Coleta de dados, votações e censo demográfico com acesso externo.</p>
                         </div>
                         <button onClick={() => setIsCreateOpen(true)} className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all">

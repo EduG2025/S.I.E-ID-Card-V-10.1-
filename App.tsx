@@ -12,6 +12,7 @@ import UserManagement from './components/UserManagement';
 import Surveys from './components/Surveys';
 import Timeline from './components/Timeline';
 import Operations from './components/Operations';
+import DemographicAnalysis from './components/DemographicAnalysis';
 
 const App: React.FC = () => {
   // Authentication State
@@ -55,6 +56,10 @@ const App: React.FC = () => {
         setIsLoggingIn(false);
 
         if (user) {
+            if (!user.active) {
+                setLoginError('Sua conta ainda está aguardando aprovação.');
+                return;
+            }
             setCurrentUser(user);
             setIsAuthenticated(true);
             setLoginError('');
@@ -70,22 +75,25 @@ const App: React.FC = () => {
       // Simulate registration request
       setRegSuccess(true);
       
+      const newUser: User = {
+          id: Date.now().toString(),
+          name: regName,
+          username: regEmail.split('@')[0],
+          password: regPassword,
+          role: UserRole.RESIDENT,
+          active: systemInfo.registrationMode === 'AUTOMATIC', // Active only if automatic
+          email: regEmail,
+          phone: regPhone,
+          avatarUrl: `https://ui-avatars.com/api/?name=${regName}&background=random`,
+          profileCompletion: 20
+      };
+
+      // Add user to list
+      setAllUsers([...allUsers, newUser]);
+
       // AUTO REGISTRATION LOGIC
       if (systemInfo.registrationMode === 'AUTOMATIC') {
           setTimeout(() => {
-              const newUser: User = {
-                  id: Date.now().toString(),
-                  name: regName,
-                  username: regEmail.split('@')[0],
-                  password: regPassword,
-                  role: UserRole.RESIDENT,
-                  active: true,
-                  email: regEmail,
-                  phone: regPhone,
-                  avatarUrl: `https://ui-avatars.com/api/?name=${regName}&background=random`,
-                  profileCompletion: 20
-              };
-              setAllUsers([...allUsers, newUser]);
               setCurrentUser(newUser);
               setIsAuthenticated(true);
               setRegSuccess(false);
@@ -93,6 +101,19 @@ const App: React.FC = () => {
               alert('Cadastro realizado com sucesso! Bem-vindo.');
           }, 1500);
       } else {
+        // APPROVAL MODE - GENERATE ALERT
+        const registrationAlert: Alert = {
+            id: `alert_${Date.now()}`,
+            title: 'Nova Solicitação de Cadastro',
+            message: `${regName} solicitou acesso ao sistema. Verifique em Cadastros.`,
+            type: 'WARNING',
+            target: 'STAFF',
+            channels: ['APP', 'EMAIL'],
+            date: new Date().toISOString(),
+            sentBy: 'Sistema'
+        };
+        setSystemAlerts([registrationAlert, ...systemAlerts]);
+
         setTimeout(() => {
             setRegSuccess(false);
             setIsRegistering(false);
@@ -124,16 +145,17 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'dashboard': return <Dashboard />;
+      case 'dashboard': return <Dashboard onNavigate={setActiveTab} />;
       case 'users': return <UserManagement systemInfo={systemInfo} templates={templates} transactions={financialRecords} onUpdateTransactions={setFinancialRecords} />;
+      case 'demographics': return <DemographicAnalysis systemInfo={systemInfo} />;
       case 'finance': return <Finance transactions={financialRecords} onUpdateTransactions={setFinancialRecords} />;
       case 'social': return <Communication alerts={systemAlerts} onAddAlert={handleAddAlert} />;
-      case 'map': return <SmartMap />;
+      // case 'map': Removido, agora está dentro de demographics
       case 'operations': return <Operations />;
       case 'surveys': return <Surveys />;
       case 'timeline': return <Timeline />;
       case 'settings': return <Settings systemInfo={systemInfo} onUpdateSystemInfo={setSystemInfo} templates={templates} onUpdateTemplates={setTemplates} usersList={allUsers} onUpdateUsers={setAllUsers} />;
-      default: return <Dashboard />;
+      default: return <Dashboard onNavigate={setActiveTab} />;
     }
   };
 
@@ -319,146 +341,75 @@ const App: React.FC = () => {
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         <div className="h-full flex flex-col">
-          <div className="p-6 flex items-center justify-between border-b border-white/5">
-            <div className="flex items-center gap-3 font-bold text-xl tracking-tight text-white overflow-hidden">
-              <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-indigo-600 shadow-lg shrink-0 overflow-hidden p-1">
-                  {systemInfo.logoUrl ? <img src={systemInfo.logoUrl} className="w-full h-full object-contain"/> : 'S'}
-              </div>
-              <span className="truncate">{systemInfo.name?.split(' ')[0] || 'S.I.E'}</span>
-            </div>
-            <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-slate-400 hover:text-white transition-colors">
-              <X size={24} />
-            </button>
+          {/* Sidebar Header */}
+          <div className="p-6 flex items-center gap-3 border-b border-slate-800">
+             <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-indigo-900/20">
+                 {systemInfo.logoUrl ? <img src={systemInfo.logoUrl} className="w-full h-full object-cover rounded-xl"/> : 'S'}
+             </div>
+             <div>
+                 <h1 className="font-bold text-white tracking-tight leading-tight">{systemInfo.name?.split(' ')[0] || 'SIE'}</h1>
+                 <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Painel Gestor</p>
+             </div>
+             <button onClick={() => setSidebarOpen(false)} className="lg:hidden ml-auto text-slate-500"><X size={20}/></button>
           </div>
 
-          <div className="px-4 py-6 flex-1 overflow-y-auto custom-scrollbar">
-            <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest mb-4 px-2">Painel de Controle</p>
-            <nav className="space-y-1">
-              {allowedMenuItems.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setActiveTab(item.id);
-                    setSidebarOpen(false);
-                  }}
-                  className={`
-                    w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 group relative
-                    ${activeTab === item.id 
-                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40' 
-                      : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'}
-                  `}
-                >
-                  <item.icon size={20} className={`relative z-10 transition-colors ${activeTab === item.id ? 'text-indigo-200' : 'text-slate-500 group-hover:text-slate-300'}`} />
-                  <span className="relative z-10">{item.label}</span>
-                  {activeTab === item.id && <div className="absolute right-4 w-1.5 h-1.5 rounded-full bg-white/40"></div>}
-                </button>
-              ))}
-            </nav>
-          </div>
+          {/* Navigation */}
+          <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-1 custom-scrollbar">
+             {allowedMenuItems.map(item => (
+                 <button
+                    key={item.id}
+                    onClick={() => { setActiveTab(item.id); setSidebarOpen(false); }}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-sm group ${
+                        activeTab === item.id 
+                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/20' 
+                        : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                    }`}
+                 >
+                     <item.icon size={20} className={activeTab === item.id ? 'text-white' : 'text-slate-500 group-hover:text-white'} />
+                     {item.label}
+                 </button>
+             ))}
+          </nav>
 
-          <div className="p-4 border-t border-white/5 bg-slate-900/50">
-            <div className="mb-4 px-2">
-                 <p className="text-[10px] text-slate-500 uppercase font-bold mb-1 tracking-wider">Licenciado para</p>
-                 <div className="flex items-center gap-2">
-                    <Building size={12} className="text-slate-500"/>
-                    <p className="text-xs text-slate-200 font-medium truncate">{systemInfo.name}</p>
+          {/* User Profile Footer */}
+          <div className="p-4 border-t border-slate-800 bg-slate-900/50">
+             <div className="flex items-center gap-3 mb-4">
+                 <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-slate-300 overflow-hidden border border-slate-600">
+                     {currentUser?.avatarUrl ? <img src={currentUser.avatarUrl} className="w-full h-full object-cover"/> : <UserIcon size={20}/>}
                  </div>
-            </div>
-            <button onClick={handleLogout} className="flex items-center gap-3 w-full px-4 py-3 text-sm font-medium text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-xl transition-all">
-              <LogOut size={18} />
-              Sair do Sistema
-            </button>
+                 <div className="flex-1 min-w-0">
+                     <p className="text-sm font-bold text-white truncate">{currentUser?.name}</p>
+                     <p className="text-xs text-slate-500 truncate capitalize">{currentUser?.role.toLowerCase()}</p>
+                 </div>
+             </div>
+             <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-slate-800 text-slate-400 text-xs font-bold hover:bg-rose-900/30 hover:text-rose-500 transition-colors">
+                 <LogOut size={14}/> Sair do Sistema
+             </button>
           </div>
         </div>
       </aside>
 
-      {/* Main Content Area - Flex Item */}
-      <main className="flex-1 flex flex-col min-w-0 bg-slate-50 h-full relative">
-        {/* Header */}
-        <header className="bg-white/90 backdrop-blur-md border-b border-slate-200 h-20 flex items-center justify-between px-4 md:px-8 sticky top-0 z-10 shadow-sm transition-all shrink-0">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-slate-500 hover:text-slate-800 transition-colors p-2 rounded-lg hover:bg-slate-100">
-              <Menu size={24} />
-            </button>
-            <div className="relative hidden sm:block group">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
-              <input 
-                type="text" 
-                placeholder="Buscar (ex: morador, unidade...)" 
-                className="pl-10 pr-4 py-2.5 bg-slate-50 border-none rounded-xl text-sm text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:bg-white w-56 md:w-72 transition-all shadow-inner placeholder-slate-400"
-              />
+      {/* Main Content Area */}
+      <main className="flex-1 flex flex-col h-full overflow-hidden relative">
+        {/* Top Header */}
+        <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-6 lg:px-8 shrink-0">
+            <div className="flex items-center gap-4">
+                <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 text-slate-500 hover:bg-slate-100 rounded-lg"><Menu size={24}/></button>
+                <h2 className="text-xl font-bold text-slate-800">
+                    {MENU_ITEMS.find(i => i.id === activeTab)?.label}
+                </h2>
             </div>
-          </div>
-
-          <div className="flex items-center gap-3 md:gap-6">
-            <div className="relative">
-                <button 
-                  onClick={() => setShowNotifications(!showNotifications)}
-                  className={`relative p-2 rounded-full transition-all ${showNotifications ? 'bg-indigo-100 text-indigo-600' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}
-                >
-                  <Bell size={22} />
-                  {systemAlerts.length > 0 && <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-white animate-pulse"></span>}
+            <div className="flex items-center gap-4">
+                <button className="p-2 text-slate-400 hover:bg-slate-50 rounded-full transition-colors relative" onClick={() => setShowNotifications(!showNotifications)}>
+                    <Bell size={20}/>
+                    {systemAlerts.length > 0 && <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-rose-500 border-2 border-white rounded-full"></span>}
                 </button>
-
-                {/* NOTIFICATIONS DROPDOWN */}
-                {showNotifications && (
-                    <div className="absolute right-0 mt-4 w-72 md:w-80 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden z-50 animate-scale-in origin-top-right">
-                        <div className="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-                            <h4 className="font-bold text-slate-800 text-sm">Notificações</h4>
-                            <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md font-bold">{systemAlerts.length} novas</span>
-                        </div>
-                        <div className="max-h-80 overflow-y-auto custom-scrollbar">
-                            {systemAlerts.length === 0 ? (
-                                <div className="p-8 text-center text-slate-400 text-sm">Nenhuma notificação nova.</div>
-                            ) : (
-                                systemAlerts.map(alert => (
-                                    <div key={alert.id} className="p-4 border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer group">
-                                        <div className="flex items-start gap-3">
-                                            <div className={`p-2 rounded-full shrink-0 ${
-                                                alert.type === 'EMERGENCY' ? 'bg-rose-100 text-rose-600' :
-                                                alert.type === 'WARNING' ? 'bg-amber-100 text-amber-600' :
-                                                alert.type === 'SUCCESS' ? 'bg-emerald-100 text-emerald-600' : 'bg-indigo-100 text-indigo-600'
-                                            }`}>
-                                                {alert.type === 'EMERGENCY' ? <ShieldAlert size={16}/> : 
-                                                 alert.type === 'WARNING' ? <AlertTriangle size={16}/> : 
-                                                 alert.type === 'SUCCESS' ? <Check size={16}/> : <Info size={16}/>}
-                                            </div>
-                                            <div>
-                                                <p className="text-sm font-bold text-slate-800 group-hover:text-indigo-700">{alert.title}</p>
-                                                <p className="text-xs text-slate-500 mt-1 leading-snug">{alert.message}</p>
-                                                <p className="text-[10px] text-slate-400 mt-2 font-medium">{new Date(alert.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                        <div className="p-3 bg-slate-50 text-center border-t border-slate-100">
-                            <button onClick={() => { setActiveTab('social'); setShowNotifications(false); }} className="text-xs font-bold text-indigo-600 hover:text-indigo-800">Ver Central de Alertas</button>
-                        </div>
-                    </div>
-                )}
             </div>
-            
-            <div className="flex items-center gap-4 pl-4 md:pl-6 border-l border-slate-200">
-              <div className="text-right hidden md:block leading-tight">
-                <p className="text-sm font-bold text-slate-800">{currentUser?.name}</p>
-                <p className="text-xs text-slate-500 font-medium">{currentUser?.unit || 'Sistema'} • <span className="text-indigo-600">{currentUser?.role}</span></p>
-              </div>
-              <img 
-                src={currentUser?.avatarUrl || 'https://via.placeholder.com/150'} 
-                alt="Profile" 
-                className="w-8 h-8 md:w-10 md:h-10 rounded-full object-cover border-2 border-white shadow-md ring-2 ring-slate-100"
-              />
-            </div>
-          </div>
         </header>
 
-        {/* Scrollable Content Wrapper */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 scroll-smooth custom-scrollbar">
-            <div className="p-4 md:p-6 lg:p-8 max-w-[1600px] mx-auto space-y-8 pb-10">
-                {renderContent()}
-            </div>
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar bg-slate-50 relative">
+             {renderContent()}
         </div>
       </main>
     </div>

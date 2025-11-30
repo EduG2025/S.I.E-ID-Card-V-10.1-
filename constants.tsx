@@ -1,5 +1,5 @@
-import { UserRole, FinancialRecord, Notice, Incident, UnitData, Poll, Reservation, User, SystemInfo, Permission, IdCardTemplate, Alert, Survey, Bill, AgendaEvent, Visitor, MaintenanceRecord } from './types';
-import { LayoutDashboard, Wallet, Users, Map, Bell, ShieldAlert, CalendarClock, Settings, ClipboardList } from 'lucide-react';
+import { UserRole, FinancialRecord, Notice, Incident, UnitData, Poll, Reservation, User, SystemInfo, Permission, IdCardTemplate, Alert, Survey, Bill, AgendaEvent, Visitor, MaintenanceRecord, DemographicStats, SocialTag } from './types';
+import { LayoutDashboard, Wallet, Users, Map, Bell, ShieldAlert, CalendarClock, Settings, ClipboardList, BarChart3 } from 'lucide-react';
 
 export const MOCK_SYSTEM_INFO: SystemInfo = {
   name: 'ASSOCIAÇÃO DE MORADORES DE CACARIA',
@@ -9,7 +9,9 @@ export const MOCK_SYSTEM_INFO: SystemInfo = {
   phone: '(11) 3333-4444',
   website: 'www.viverbem.org.br',
   primaryColor: '#4f46e5',
-  registrationMode: 'APPROVAL'
+  registrationMode: 'APPROVAL',
+  enableMaps: true,
+  enableQuestionnaire: true // Ativado por padrão
 };
 
 export const MOCK_USER: User = {
@@ -41,12 +43,13 @@ export const MOCK_USER: User = {
 
 export const MENU_ITEMS = [
   { id: 'dashboard', label: 'Visão Geral', icon: LayoutDashboard, roles: ['ALL'] },
-  { id: 'users', label: 'Cadastros', icon: Users, roles: [UserRole.ADMIN, UserRole.PRESIDENT, UserRole.VICE_PRESIDENT, UserRole.SINDIC, UserRole.CONCIERGE] },
+  { id: 'users', label: 'Cadastros & Famílias', icon: Users, roles: [UserRole.ADMIN, UserRole.PRESIDENT, UserRole.VICE_PRESIDENT, UserRole.SINDIC, UserRole.CONCIERGE] },
+  { id: 'demographics', label: 'Análise Demográfica', icon: BarChart3, roles: [UserRole.ADMIN, UserRole.PRESIDENT, UserRole.VICE_PRESIDENT, UserRole.SINDIC] },
+  { id: 'surveys', label: 'Censo & Pesquisas', icon: ClipboardList, roles: ['ALL'] },
   { id: 'finance', label: 'Financeiro', icon: Wallet, roles: [UserRole.ADMIN, UserRole.PRESIDENT, UserRole.VICE_PRESIDENT, UserRole.SINDIC, UserRole.RESIDENT] },
   { id: 'social', label: 'Comunicação', icon: Bell, roles: ['ALL'] },
-  { id: 'map', label: 'Mapa Inteligente', icon: Map, roles: [UserRole.ADMIN, UserRole.PRESIDENT, UserRole.SINDIC, UserRole.CONCIERGE] },
+  // Mapa removido do menu principal, agora está dentro de Análise Demográfica
   { id: 'operations', label: 'Operacional', icon: ShieldAlert, roles: [UserRole.ADMIN, UserRole.PRESIDENT, UserRole.SINDIC, UserRole.CONCIERGE] },
-  { id: 'surveys', label: 'Pesquisas & Censo', icon: ClipboardList, roles: ['ALL'] },
   { id: 'timeline', label: 'Agenda & Timeline', icon: CalendarClock, roles: ['ALL'] },
   { id: 'settings', label: 'Configurações', icon: Settings, roles: [UserRole.ADMIN, UserRole.PRESIDENT] },
 ];
@@ -140,10 +143,31 @@ export const MOCK_USERS_LIST: User[] = [
     },
     financialStatus: 'OVERDUE',
     profileCompletion: 100
+  },
+  {
+    id: '5',
+    name: 'PEDRO ALVES',
+    username: 'pedro.alves',
+    password: '123',
+    unit: 'Bloco B - 202',
+    role: 'Morador',
+    avatarUrl: 'https://picsum.photos/seed/pedro/200/200',
+    email: 'pedro.alves@email.com',
+    active: true,
+    admissionDate: '2023-01-15',
+    financialSettings: {
+        monthlyFee: 450.00,
+        dueDay: 15,
+        isDonor: false,
+        autoGenerateCharge: true
+    },
+    financialStatus: 'PENDING',
+    profileCompletion: 60
   }
 ];
 
 export const MOCK_FINANCIALS: FinancialRecord[] = [
+  // Outubro
   { id: '1', description: 'Mensalidade - Unid 101', amount: 850.00, type: 'INCOME', status: 'PAID', date: '2023-10-05', category: 'Mensalidade', dueDate: '2023-10-10' },
   { id: '2', description: 'Manutenção Elevador', amount: 4500.00, type: 'EXPENSE', status: 'PAID', date: '2023-10-10', category: 'Manutenção', dueDate: '2023-10-10' },
   { id: '3', description: 'Jardinagem Mensal', amount: 1200.00, type: 'EXPENSE', status: 'PENDING', date: '2023-10-15', category: 'Serviços', dueDate: '2023-10-20' },
@@ -151,34 +175,56 @@ export const MOCK_FINANCIALS: FinancialRecord[] = [
   { id: '5', description: 'Reserva Salão de Festas', amount: 150.00, type: 'INCOME', status: 'PAID', date: '2023-10-12', category: 'Reservas', dueDate: '2023-10-12' },
   { id: '6', description: 'Compra de Material Limpeza', amount: 350.00, type: 'EXPENSE', status: 'PAID', date: '2023-10-01', category: 'Material', dueDate: '2023-10-01' },
   { id: '7', description: 'Conta de Energia (Área Comum)', amount: 1250.00, type: 'EXPENSE', status: 'PENDING', date: '2023-10-25', category: 'Utilidades', dueDate: '2023-11-05' },
+  
+  // Novembro (Futuro/Atual)
+  { id: '8', description: 'Mensalidade - Unid 102', amount: 850.00, type: 'INCOME', status: 'PAID', date: '2023-11-05', category: 'Mensalidade', dueDate: '2023-11-10' },
+  { id: '9', description: 'Mensalidade - Unid 304', amount: 850.00, type: 'INCOME', status: 'PENDING', date: '2023-11-05', category: 'Mensalidade', dueDate: '2023-11-10' },
+  { id: '10', description: 'Reparo Portão', amount: 800.00, type: 'EXPENSE', status: 'PAID', date: '2023-11-01', category: 'Manutenção', dueDate: '2023-11-01' },
+  { id: '11', description: 'Taxa Extra - Obra Fachada', amount: 200.00, type: 'INCOME', status: 'PAID', date: '2023-11-05', category: 'Taxa Extra', dueDate: '2023-11-10' },
+  
+  // Setembro (Passado)
+  { id: '12', description: 'Mensalidade - Unid 101', amount: 850.00, type: 'INCOME', status: 'PAID', date: '2023-09-05', category: 'Mensalidade', dueDate: '2023-09-10' },
+  { id: '13', description: 'Mensalidade - Unid 304', amount: 850.00, type: 'INCOME', status: 'PAID', date: '2023-09-05', category: 'Mensalidade', dueDate: '2023-09-10' },
+  { id: '14', description: 'Manutenção Preventiva', amount: 1500.00, type: 'EXPENSE', status: 'PAID', date: '2023-09-15', category: 'Manutenção', dueDate: '2023-09-15' },
+  { id: '15', description: 'Conta de Água', amount: 2100.00, type: 'EXPENSE', status: 'PAID', date: '2023-09-20', category: 'Utilidades', dueDate: '2023-09-25' },
+  { id: '16', description: 'Aluguel Churrasqueira', amount: 100.00, type: 'INCOME', status: 'PAID', date: '2023-09-10', category: 'Reservas', dueDate: '2023-09-10' },
 ];
 
 export const MOCK_BILLS: Bill[] = [
     { id: 'b1', userId: '2', userName: 'Ana Silva Oliveira', unit: 'Bloco B - 304', amount: 450.00, dueDate: '2023-11-10', status: 'PENDING', barcode: '83620000000-1 45000000000-2', month: '11/2023' },
     { id: 'b2', userId: '4', userName: 'Mercadinho Express', unit: 'Loja 01', amount: 800.00, dueDate: '2023-10-05', status: 'OVERDUE', barcode: '83620000000-3 80000000000-4', month: '10/2023' },
     { id: 'b3', userId: '1', userName: 'Carlos Mendes', unit: 'Bloco A - 102', amount: 50.00, dueDate: '2023-11-10', status: 'PAID', barcode: '83620000000-5 5000000000-6', month: '11/2023' },
+    { id: 'b4', userId: '5', userName: 'Pedro Alves', unit: 'Bloco B - 202', amount: 450.00, dueDate: '2023-11-15', status: 'PENDING', barcode: '83620000000-7 45000000000-8', month: '11/2023' },
 ];
 
 export const MOCK_NOTICES: Notice[] = [
-  { id: '1', title: 'Manutenção na Rede Elétrica', content: 'Haverá desligamento programado na próxima terça-feira das 09h às 12h para reparos.', urgency: 'HIGH', date: '2023-10-25', author: 'Administração' },
-  { id: '2', title: 'Assembleia Geral Ordinária', content: 'Convocação para aprovação das contas do exercício anterior.', urgency: 'MEDIUM', date: '2023-10-28', author: 'Síndico' },
-  { id: '3', title: 'Feira Orgânica no Condomínio', content: 'Todos os sábados pela manhã teremos feira orgânica na praça central.', urgency: 'LOW', date: '2023-10-20', author: 'Comitê Social' },
+  { id: '1', title: 'Manutenção na Rede Elétrica', content: 'Haverá desligamento programado na próxima terça-feira das 09h às 12h para reparos na rede externa.', urgency: 'HIGH', date: '2023-10-25', author: 'Administração' },
+  { id: '2', title: 'Assembleia Geral Ordinária', content: 'Convocação para aprovação das contas do exercício anterior e eleição do conselho fiscal.', urgency: 'MEDIUM', date: '2023-10-28', author: 'Síndico' },
+  { id: '3', title: 'Feira Orgânica no Condomínio', content: 'Todos os sábados pela manhã teremos feira orgânica na praça central com produtos frescos.', urgency: 'LOW', date: '2023-10-20', author: 'Comitê Social' },
+  { id: '4', title: 'Regras para Uso da Piscina', content: 'Lembramos a todos que é obrigatório o exame médico atualizado para uso das piscinas.', urgency: 'MEDIUM', date: '2023-10-15', author: 'Administração' },
+  { id: '5', title: 'Coleta de Lixo Eletrônico', content: 'Na próxima semana teremos um ponto de coleta de lixo eletrônico na portaria.', urgency: 'LOW', date: '2023-10-10', author: 'Zeladoria' },
 ];
 
 export const MOCK_ALERTS: Alert[] = [
   { id: 'a1', title: 'Portão Principal Travado', message: 'Técnico já foi acionado. Previsão de reparo: 14:00.', type: 'WARNING', target: 'ALL', channels: ['APP', 'WHATSAPP'], date: '2023-11-01T10:30:00', sentBy: 'Portaria' },
   { id: 'a2', title: 'Entrega de Encomendas', message: 'Correios na portaria para entregas do Bloco A.', type: 'INFO', target: 'BLOCK_A', channels: ['APP'], date: '2023-11-01T11:15:00', sentBy: 'Zelador' },
-  { id: 'a3', title: 'Festa Junina Confirmada!', message: 'Agradecemos a todos que confirmaram presença.', type: 'SUCCESS', target: 'ALL', channels: ['EMAIL', 'APP'], date: '2023-10-30T09:00:00', sentBy: 'Comitê Social' }
+  { id: 'a3', title: 'Festa Junina Confirmada!', message: 'Agradecemos a todos que confirmaram presença.', type: 'SUCCESS', target: 'ALL', channels: ['EMAIL', 'APP'], date: '2023-10-30T09:00:00', sentBy: 'Comitê Social' },
+  { id: 'a4', title: 'Alarme de Incêndio - Teste', message: 'Teste mensal do alarme será realizado amanhã às 10h.', type: 'INFO', target: 'ALL', channels: ['APP'], date: '2023-10-29T14:00:00', sentBy: 'Segurança' }
 ];
 
 export const MOCK_INCIDENTS: Incident[] = [
   { id: '1', title: 'Lâmpada queimada no Hall', location: 'Bloco A - Térreo', status: 'OPEN', reportedBy: 'Maria Silva', date: '2023-10-26', priority: 'LOW' },
   { id: '2', title: 'Portão da garagem travando', location: 'Portaria Principal', status: 'IN_PROGRESS', reportedBy: 'Porteiro João', date: '2023-10-25', priority: 'HIGH' },
+  { id: '3', title: 'Vazamento na torneira do jardim', location: 'Jardim Central', status: 'RESOLVED', reportedBy: 'Pedro Alves', date: '2023-10-20', priority: 'MEDIUM' },
+  { id: '4', title: 'Barulho excessivo após as 22h', location: 'Bloco B - Apto 402', status: 'OPEN', reportedBy: 'Anônimo', date: '2023-10-28', priority: 'MEDIUM' },
 ];
 
-export const MOCK_UNITS: UnitData[] = Array.from({ length: 24 }).map((_, i) => {
-  const block = i < 12 ? 'A' : 'B';
-  const floor = Math.floor((i % 12) / 4) + 1;
+// Gerar unidades com dados demográficos e geográficos simulados
+// Center approximately on Cacaria, Piraí/RJ (-22.6186, -43.7122)
+// Spreading points around this center to simulate a neighborhood
+export const MOCK_UNITS: UnitData[] = Array.from({ length: 48 }).map((_, i) => {
+  const block = i < 24 ? 'A' : 'B';
+  const floor = Math.floor((i % 24) / 4) + 1;
   const num = (i % 4) + 1;
   const unitNum = `${floor}0${num}`;
   
@@ -186,13 +232,59 @@ export const MOCK_UNITS: UnitData[] = Array.from({ length: 24 }).map((_, i) => {
   let status: UnitData['status'] = 'OK';
   if (rand > 0.8) status = 'DEBT';
   else if (rand > 0.6) status = 'WARNING';
+  
+  // Vulnerability & Social Tags Simulation
+  let vulnerability: UnitData['vulnerabilityLevel'] = 'LOW';
+  let tags: SocialTag[] = [];
+
+  const randSocial = Math.random();
+  if (randSocial > 0.85) {
+      vulnerability = 'HIGH';
+      tags.push('LOW_INCOME');
+      if (Math.random() > 0.5) tags.push('HELP_REQUEST');
+  } else if (randSocial > 0.70) {
+      vulnerability = 'MEDIUM';
+      tags.push('ELDERLY_ALONE');
+  } else if (randSocial > 0.60) {
+      tags.push('DISABILITY');
+  } else {
+      tags.push('NONE');
+  }
+
+  // Base coordinates for Cacaria, Piraí
+  const baseLat = -22.6186;
+  const baseLng = -43.7122;
+  
+  // Create a grid-like distribution
+  // 48 units, maybe 6 streets of 8 houses
+  const streetIndex = Math.floor(i / 8);
+  const houseIndex = i % 8;
+  
+  // Spread factors
+  const latSpread = 0.0008; // distance between streets
+  const lngSpread = 0.0008; // distance between houses
+  
+  // Add some jitter for realism
+  const jitterLat = (Math.random() - 0.5) * 0.0002;
+  const jitterLng = (Math.random() - 0.5) * 0.0002;
+
+  // Simulating random CEPs for Piraí region
+  const ceps = ['27175-000', '27175-010', '27175-020', '27175-030'];
+  const randomCep = ceps[Math.floor(Math.random() * ceps.length)];
 
   return {
     id: `unit-${i}`,
     block,
     number: unitNum,
     status,
-    residentName: `Morador ${block}-${unitNum}`
+    residentName: `Morador ${block}-${unitNum}`,
+    vulnerabilityLevel: vulnerability,
+    tags: tags,
+    coordinates: {
+        lat: baseLat + (streetIndex * latSpread) + jitterLat,
+        lng: baseLng + (houseIndex * lngSpread) + jitterLng
+    },
+    cep: randomCep
   };
 });
 
@@ -209,22 +301,37 @@ export const MOCK_POLLS: Poll[] = [
       { id: 'opt2', text: 'Cinza Concreto', votes: 15 },
       { id: 'opt3', text: 'Manter atual', votes: 10 },
     ]
+  },
+  {
+    id: '2',
+    question: 'Instalação de Câmeras no Estacionamento',
+    status: 'CLOSED',
+    endDate: '2023-10-15',
+    totalVotes: 80,
+    externalLink: 'https://viverbem.org.br/v/cameras',
+    options: [
+      { id: 'optA', text: 'Sim, aprovo', votes: 70 },
+      { id: 'optB', text: 'Não aprovo', votes: 10 },
+    ]
   }
 ];
 
 export const MOCK_RESERVATIONS: Reservation[] = [
   { id: '1', area: 'Salão de Festas', date: '2023-11-04', startTime: '18:00', endTime: '23:00', resident: 'Apt 102 - Bloco A', status: 'CONFIRMED' },
   { id: '2', area: 'Churrasqueira 1', date: '2023-11-05', startTime: '12:00', endTime: '16:00', resident: 'Apt 301 - Bloco B', status: 'PENDING' },
+  { id: '3', area: 'Espaço Gourmet', date: '2023-11-10', startTime: '19:00', endTime: '22:00', resident: 'Apt 202 - Bloco A', status: 'CONFIRMED' },
 ];
 
 export const MOCK_VISITORS: Visitor[] = [
     { id: 'v1', name: 'João Entregador', document: '12.345.678-9', type: 'DELIVERY', destinationUnit: 'Bloco A - 202', entryTime: '2023-11-01T14:30:00', exitTime: '2023-11-01T14:45:00', registeredBy: 'Portaria' },
     { id: 'v2', name: 'Maria Visita', document: '98.765.432-1', type: 'VISITOR', destinationUnit: 'Bloco B - 101', entryTime: '2023-11-01T15:00:00', registeredBy: 'Portaria' },
+    { id: 'v3', name: 'Técnico Internet', document: '44.555.666-7', type: 'SERVICE', destinationUnit: 'Bloco A - 303', entryTime: '2023-11-02T09:00:00', registeredBy: 'Zelador' },
 ];
 
 export const MOCK_MAINTENANCE: MaintenanceRecord[] = [
     { id: 'm1', title: 'Troca de Óleo Gerador', type: 'PREVENTIVE', status: 'COMPLETED', date: '2023-10-15', cost: 850.00, assignedTo: 'Empresa XYZ' },
     { id: 'm2', title: 'Reparo Vazamento Piscina', type: 'CORRECTIVE', status: 'SCHEDULED', date: '2023-11-10', assignedTo: 'Hidráulica Silva' },
+    { id: 'm3', title: 'Pintura da Guarita', type: 'PREVENTIVE', status: 'OVERDUE', date: '2023-10-20', cost: 1200.00, assignedTo: 'Pinturas Rápidas' },
 ];
 
 export const MOCK_AGENDA: AgendaEvent[] = [
@@ -266,6 +373,16 @@ export const MOCK_AGENDA: AgendaEvent[] = [
         location: 'Área de Lazer',
         status: 'UPCOMING',
         createdBy: 'Comitê Social'
+    },
+    {
+        id: 'ev5',
+        title: 'Dedetização Semestral',
+        description: 'Aplicação de produto nas áreas comuns.',
+        date: '2023-11-20T09:00:00',
+        type: 'MAINTENANCE',
+        location: 'Áreas Comuns',
+        status: 'UPCOMING',
+        createdBy: 'Zelador'
     }
 ];
 
@@ -301,8 +418,40 @@ export const MOCK_SURVEYS: Survey[] = [
             { id: 'sq1', text: 'Como você avalia a limpeza da piscina?', type: 'rating' },
             { id: 'sq2', text: 'Como você avalia a academia?', type: 'rating' }
         ]
+    },
+    {
+        id: 's3',
+        title: 'Votação: Nova Cor da Fachada',
+        description: 'Escolha a cor para a pintura que será realizada em 2024.',
+        type: 'VOTING',
+        status: 'CLOSED',
+        startDate: '2023-09-01',
+        endDate: '2023-09-30',
+        externalAccess: true,
+        responseCount: 120,
+        questions: [
+            { id: 'vq1', text: 'Qual cor você prefere?', type: 'choice', options: ['Azul', 'Cinza', 'Branco'] }
+        ]
     }
 ];
+
+export const MOCK_DEMOGRAPHICS: DemographicStats = {
+    totalPopulation: 302,
+    averageAge: 34,
+    averageIncome: 2908.98,
+    unemploymentRate: 20.0,
+    ageDistribution: {
+        children: 25, // percentage
+        adults: 60,
+        seniors: 15
+    },
+    infrastructureNeeds: {
+        sanitation: 7, // count
+        water: 3,
+        lighting: 14,
+        trashCollection: 0
+    }
+};
 
 // --- MOCK TEMPLATES ---
 export const MOCK_TEMPLATES: IdCardTemplate[] = [

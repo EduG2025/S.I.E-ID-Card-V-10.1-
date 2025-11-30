@@ -7,7 +7,7 @@ import {
   Image as ImageIcon, CreditCard, Plus, Trash2, 
   Move, Type, MousePointer2, Layers, AlignLeft, AlignCenter, AlignRight,
   ArrowUp, ArrowDown, Maximize, AlertCircle, Grid3X3, Eye, Settings2, UserCheck, Lock, RefreshCw, CheckSquare, Square, UserPlus,
-  Cpu, MessageCircle, Landmark, Globe, EyeOff, Link as LinkIcon, AlertTriangle
+  Cpu, MessageCircle, Landmark, Globe, EyeOff, Link as LinkIcon, AlertTriangle, FileText
 } from 'lucide-react';
 
 interface SettingsProps {
@@ -40,6 +40,10 @@ const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, tem
   // PERMISSIONS MODAL STATE
   const [permissionUser, setPermissionUser] = useState<User | null>(null);
   const [tempPermissions, setTempPermissions] = useState<string[]>([]);
+
+  // PASSWORD RESET STATE
+  const [passwordResetUser, setPasswordResetUser] = useState<User | null>(null);
+  const [newPassword, setNewPassword] = useState('');
 
   // API INTEGRATION STATES
   const [apiConfig, setApiConfig] = useState({
@@ -115,6 +119,23 @@ const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, tem
       );
       onUpdateUsers(updatedList);
       setPermissionUser(null);
+      alert('Permissões atualizadas com sucesso!');
+  };
+
+  // --- PASSWORD RESET LOGIC ---
+  const handleOpenPasswordReset = (user: User) => {
+      setPasswordResetUser(user);
+      setNewPassword('');
+  };
+
+  const handleSavePassword = () => {
+      if (!passwordResetUser || !newPassword) return;
+      const updatedList = usersList.map(u =>
+          u.id === passwordResetUser.id ? { ...u, password: newPassword } : u
+      );
+      onUpdateUsers(updatedList);
+      setPasswordResetUser(null);
+      alert(`Senha de ${passwordResetUser.name} redefinida com sucesso.`);
   };
 
   const groupedPermissions = SYSTEM_PERMISSIONS.reduce((acc, perm) => {
@@ -285,6 +306,18 @@ const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, tem
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Endereço Completo</label>
                         <input type="text" placeholder="Endereço" value={systemInfo.address} onChange={e => onUpdateSystemInfo({...systemInfo, address: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all placeholder-slate-400"/>
                     </div>
+                    
+                    {/* Toggle Mapas */}
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mt-4 flex items-center justify-between">
+                        <div>
+                            <label className="text-sm font-bold text-slate-800 block">Habilitar Mapas Interativos</label>
+                            <p className="text-xs text-slate-500 mt-1">Ativa integração com OpenStreetMap e Leaflet. Desative em caso de erros.</p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" checked={!!systemInfo.enableMaps} onChange={(e) => onUpdateSystemInfo({...systemInfo, enableMaps: e.target.checked})} className="sr-only peer" />
+                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                        </label>
+                    </div>
                 </div>
                 
                 <div className="space-y-6">
@@ -358,6 +391,22 @@ const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, tem
                     </div>
                     </label>
                 </div>
+
+                <div className="mt-6 pt-6 border-t border-slate-100">
+                    <h4 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
+                        <FileText size={18} className="text-indigo-600"/> Dados Complementares
+                    </h4>
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex items-center justify-between">
+                        <div>
+                            <label className="text-sm font-bold text-slate-800 block">Ativar Questionário Social / Ficha Cadastral</label>
+                            <p className="text-xs text-slate-500 mt-1">Exige preenchimento de dados socioeconômicos (renda, saúde, moradia) para completar o cadastro.</p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" checked={!!systemInfo.enableQuestionnaire} onChange={(e) => onUpdateSystemInfo({...systemInfo, enableQuestionnaire: e.target.checked})} className="sr-only peer" />
+                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                        </label>
+                    </div>
+                </div>
               </div>
 
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden relative">
@@ -409,7 +458,7 @@ const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, tem
                                     <td className="p-4"><span className="flex items-center gap-1.5 text-xs font-bold text-emerald-600"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> Ativo</span></td>
                                     <td className="p-4 text-right">
                                         <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg tooltip" title="Redefinir Senha"><Lock size={16}/></button>
+                                            <button onClick={() => handleOpenPasswordReset(user)} className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg tooltip" title="Redefinir Senha"><Lock size={16}/></button>
                                             <button onClick={() => handleOpenPermissions(user)} className="p-2 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg tooltip" title="Alterar Permissões"><Shield size={16}/></button>
                                         </div>
                                     </td>
@@ -422,9 +471,10 @@ const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, tem
           </div>
       )}
 
-      {/* --- STUDIO --- */}
+      {/* --- TAB: STUDIO --- */}
       {activeTab === 'STUDIO' && (
           <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-220px)] min-h-[800px]">
+              {/* (Código do Studio mantido inalterado) */}
               <div className="w-full lg:w-72 bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
                   <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
                       <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Seus Modelos</span>
@@ -451,7 +501,7 @@ const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, tem
                   </div>
               </div>
 
-              {/* CENTER CANVAS (UNCHANGED LOGIC, JUST STYLING) */}
+              {/* CENTER CANVAS */}
               <div className="flex-1 bg-slate-100 rounded-2xl border border-slate-200 shadow-inner p-6 flex flex-col items-center justify-center relative overflow-hidden select-none group/canvas">
                   {/* ... Toolbar & Canvas rendering (same as before) ... */}
                   {activeTemplate ? (
@@ -507,14 +557,12 @@ const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, tem
                                     <div><label className="text-xs font-bold text-slate-500 mb-1 block">Largura (px)</label><input type="number" value={activeTemplate.width} onChange={(e) => updateTemplate({ width: Number(e.target.value) })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500"/></div>
                                     <div><label className="text-xs font-bold text-slate-500 mb-1 block">Altura (px)</label><input type="number" value={activeTemplate.height} onChange={(e) => updateTemplate({ height: Number(e.target.value) })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500"/></div>
                                 </div>
-                                {/* Orientation & Color pickers remain similar but cleaner */}
                             </div>
                           )}
                           {selectedElementId && activeElement && (
                               <div className="p-6 space-y-6">
                                   <div className="flex justify-between items-center border-b border-slate-100 pb-3"><h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">Propriedades</h4><button onClick={() => removeElement(activeElement.id)} className="text-rose-500 hover:bg-rose-50 p-1.5 rounded-lg transition-colors"><Trash2 size={16}/></button></div>
                                   {activeElement.type === 'text-dynamic' && (<div><label className="text-xs font-bold text-slate-500 mb-1 block">Campo Dinâmico</label><select value={activeElement.field} onChange={(e) => updateElement(activeElement.id, { field: e.target.value as any })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500"><option value="name">Nome</option><option value="role">Cargo</option><option value="cpfCnpj">CPF</option></select></div>)}
-                                  {/* Inputs stylized */}
                               </div>
                           )}
                       </div>
@@ -525,6 +573,7 @@ const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, tem
 
       {/* --- TAB: API --- */}
       {activeTab === 'API' && (
+          // (Conteúdo API mantido)
           <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center mb-8">
                   <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-indigo-200"><Globe size={32}/></div>
@@ -556,6 +605,73 @@ const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, tem
                       </div>
                   </div>
               ))}
+          </div>
+      )}
+
+      {/* --- MODALS --- */}
+      
+      {/* PERMISSION MANAGER MODAL */}
+      {permissionUser && (
+          <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-scale-in">
+                  <div className="p-6 border-b border-slate-100 bg-slate-50">
+                      <h3 className="font-bold text-lg text-slate-800">Gerenciar Permissões</h3>
+                      <p className="text-sm text-slate-500">Editando acesso de: <span className="font-bold text-indigo-600">{permissionUser.name}</span></p>
+                  </div>
+                  <div className="p-6 overflow-y-auto max-h-[60vh] space-y-6">
+                      {Object.entries(groupedPermissions).map(([module, perms]) => (
+                          <div key={module}>
+                              <h4 className="text-xs font-bold text-slate-400 uppercase mb-3 border-b border-slate-100 pb-1">{module}</h4>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  {perms.map(p => (
+                                      <label key={p.id} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${tempPermissions.includes(p.id) ? 'bg-indigo-50 border-indigo-200 shadow-sm' : 'bg-white border-slate-200 hover:bg-slate-50'}`}>
+                                          <input 
+                                            type="checkbox" 
+                                            checked={tempPermissions.includes(p.id)} 
+                                            onChange={() => handleTogglePermission(p.id)}
+                                            className="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500"
+                                          />
+                                          <span className={`text-sm font-medium ${tempPermissions.includes(p.id) ? 'text-indigo-800' : 'text-slate-600'}`}>{p.label}</span>
+                                      </label>
+                                  ))}
+                              </div>
+                          </div>
+                      ))}
+                  </div>
+                  <div className="p-5 border-t border-slate-100 flex justify-end gap-3 bg-slate-50">
+                      <button onClick={() => setPermissionUser(null)} className="px-5 py-2 text-slate-600 font-bold hover:bg-slate-200 rounded-xl transition-colors text-sm">Cancelar</button>
+                      <button onClick={handleSavePermissions} className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all text-sm">Salvar Permissões</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* PASSWORD RESET MODAL */}
+      {passwordResetUser && (
+          <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+                  <div className="p-6 border-b border-slate-100 bg-slate-50">
+                      <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><Key size={20} className="text-indigo-600"/> Redefinir Senha</h3>
+                      <p className="text-sm text-slate-500 mt-1">Alterando senha de: <span className="font-bold text-indigo-600">{passwordResetUser.name}</span></p>
+                  </div>
+                  <div className="p-6 space-y-4">
+                      <div>
+                          <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Nova Senha</label>
+                          <input 
+                            type="text" 
+                            value={newPassword} 
+                            onChange={(e) => setNewPassword(e.target.value)} 
+                            placeholder="Digite a nova senha..."
+                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                          />
+                          <p className="text-xs text-slate-400 mt-2">Dica: Use uma senha forte com letras e números.</p>
+                      </div>
+                  </div>
+                  <div className="p-5 border-t border-slate-100 flex justify-end gap-3 bg-slate-50">
+                      <button onClick={() => setPasswordResetUser(null)} className="px-5 py-2 text-slate-600 font-bold hover:bg-slate-200 rounded-xl transition-colors text-sm">Cancelar</button>
+                      <button onClick={handleSavePassword} disabled={!newPassword} className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed">Confirmar Alteração</button>
+                  </div>
+              </div>
           </div>
       )}
     </div>

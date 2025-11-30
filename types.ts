@@ -21,6 +21,8 @@ export interface SystemInfo {
   primaryColor?: string;
   website?: string;
   registrationMode?: 'AUTOMATIC' | 'APPROVAL';
+  enableMaps?: boolean;
+  enableQuestionnaire?: boolean; // Nova configuração
 }
 
 export interface UserFinancialSettings {
@@ -29,6 +31,54 @@ export interface UserFinancialSettings {
   isDonor: boolean;
   donationAmount?: number;
   autoGenerateCharge: boolean;
+}
+
+// Interface detalhada do Questionário Social
+export interface SocialQuestionnaireData {
+  // 1. Domicílio
+  residenceType?: 'Casa' | 'Sobrado' | 'Apartamento' | 'Barraco' | 'Outros';
+  residenceOwnership?: 'Próprio' | 'Alugado' | 'Cedido' | 'Ocupação';
+  residentsCount?: number;
+  childrenCount?: number; // 0-12
+  teenCount?: number; // 13-17
+  adultCount?: number; // 18-59
+  seniorCount?: number; // 60+
+  hasDisabledPerson?: boolean;
+  disabledPersonDetail?: string;
+  animals?: string; // Cães, Gatos...
+
+  // 2. Econômico & Infra
+  incomeRange?: '0-600' | '601-1200' | '1201-2500' | '2501-5000' | '5001+';
+  incomeSource?: 'Formal' | 'Informal' | 'Autônomo' | 'Benefícios' | 'Sem rendimento';
+  socialBenefit?: 'Bolsa Família' | 'BPC-LOAS' | 'Auxílio Municipal' | 'Nenhum';
+  waterSupply?: 'Regular' | 'Irregular' | 'Ausente';
+  trashCollection?: boolean;
+  sewage?: 'Rede Básica' | 'Fossa' | 'Céu Aberto';
+  electricity?: 'Regular' | 'Irregular' | 'Ausente';
+  internet?: 'Fibra' | 'Rádio' | 'Móvel' | 'Não possui';
+  publicTransport?: boolean;
+
+  // 3. Individual/Saúde
+  educationLevel?: 'Sem escolaridade' | 'Fundamental' | 'Médio' | 'Técnico' | 'Superior' | 'Pós';
+  isStudent?: boolean;
+  workStatus?: 'Formal' | 'Autônomo' | 'Informal' | 'Desempregado' | 'Aposentado';
+  chronicDisease?: string;
+  continuousMedication?: boolean;
+  
+  // 4. Comércio (Se aplicável)
+  isMerchant?: boolean;
+  businessName?: string;
+  businessType?: string;
+  hasLicense?: boolean;
+  businessRevenue?: '< 2k' | '2k-5k' | '5k-10k' | '10k-50k' | '50k+';
+  communityInterest?: string[];
+
+  // 5. Indicadores Sociais
+  urgentNeed?: 'Alimento' | 'Saúde' | 'Habitação' | 'Emprego' | 'Nenhuma';
+  socialRisk?: boolean;
+  childrenOutOfSchool?: number;
+  unemployedCount?: number;
+  seniorsAlone?: number;
 }
 
 export interface User {
@@ -52,6 +102,7 @@ export interface User {
   financialStatus?: 'OK' | 'PENDING' | 'OVERDUE';
   profileCompletion?: number; // 0 to 100
   permissions?: string[]; // List of specific permission IDs granted to this user
+  socialData?: SocialQuestionnaireData; // Dados do questionário
 }
 
 export interface Permission {
@@ -124,12 +175,18 @@ export interface Incident {
   photoUrl?: string;
 }
 
+export type SocialTag = 'LOW_INCOME' | 'ELDERLY_ALONE' | 'DISABILITY' | 'HELP_REQUEST' | 'NONE';
+
 export interface UnitData {
   id: string;
   block: string;
   number: string;
   status: 'OK' | 'DEBT' | 'WARNING';
   residentName: string;
+  vulnerabilityLevel?: 'LOW' | 'MEDIUM' | 'HIGH'; 
+  tags: SocialTag[]; // Array of social markers
+  coordinates: { lat: number; lng: number }; // Geographic coordinates
+  cep?: string; // Added CEP property
 }
 
 export interface Poll {
@@ -239,4 +296,23 @@ export interface IdCardTemplate {
   frontBackground: string; // Color or Image URL
   backBackground: string; // Color or Image URL
   elements: CardElement[];
+}
+
+// --- DEMOGRAPHIC ANALYSIS TYPES ---
+export interface DemographicStats {
+    totalPopulation: number;
+    averageAge: number;
+    averageIncome: number;
+    unemploymentRate: number;
+    ageDistribution: {
+        children: number; // 0-14
+        adults: number; // 15-64
+        seniors: number; // 65+
+    };
+    infrastructureNeeds: {
+        sanitation: number;
+        water: number;
+        lighting: number;
+        trashCollection: number;
+    };
 }

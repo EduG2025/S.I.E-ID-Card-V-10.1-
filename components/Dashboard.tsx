@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
 import { MOCK_FINANCIALS, MOCK_INCIDENTS, MOCK_NOTICES } from '../constants';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { ArrowUpRight, ArrowDownRight, AlertTriangle, Users, Calendar } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, AlertTriangle, Users, Calendar, UserPlus, FileText, Send } from 'lucide-react';
 
-const Dashboard: React.FC = () => {
+interface DashboardProps {
+  onNavigate: (tab: string) => void;
+}
+
+const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const [timeFilter, setTimeFilter] = useState('SEMESTER');
 
   const totalIncome = MOCK_FINANCIALS.filter(f => f.type === 'INCOME').reduce((acc, curr) => acc + curr.amount, 0);
@@ -100,6 +104,39 @@ const Dashboard: React.FC = () => {
             colorClass="text-indigo-600"
             borderClass="border-b-4 border-b-indigo-500"
         />
+      </div>
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <button onClick={() => onNavigate('users')} className="flex items-center p-4 bg-white border border-slate-200 rounded-xl hover:shadow-md hover:border-indigo-300 transition-all group text-left">
+              <div className="p-3 bg-indigo-50 text-indigo-600 rounded-lg group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                  <UserPlus size={24} />
+              </div>
+              <div className="ml-4">
+                  <h4 className="font-bold text-slate-800 group-hover:text-indigo-700 transition-colors">Novo Morador</h4>
+                  <p className="text-xs text-slate-500">Cadastrar nova unidade</p>
+              </div>
+          </button>
+
+          <button onClick={() => onNavigate('finance')} className="flex items-center p-4 bg-white border border-slate-200 rounded-xl hover:shadow-md hover:border-emerald-300 transition-all group text-left">
+              <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                  <FileText size={24} />
+              </div>
+              <div className="ml-4">
+                  <h4 className="font-bold text-slate-800 group-hover:text-emerald-700 transition-colors">Gerar Relatório</h4>
+                  <p className="text-xs text-slate-500">Financeiro e Operacional</p>
+              </div>
+          </button>
+
+          <button onClick={() => onNavigate('social')} className="flex items-center p-4 bg-white border border-slate-200 rounded-xl hover:shadow-md hover:border-amber-300 transition-all group text-left">
+              <div className="p-3 bg-amber-50 text-amber-600 rounded-lg group-hover:bg-amber-600 group-hover:text-white transition-colors">
+                  <Send size={24} />
+              </div>
+              <div className="ml-4">
+                  <h4 className="font-bold text-slate-800 group-hover:text-amber-700 transition-colors">Enviar Comunicado</h4>
+                  <p className="text-xs text-slate-500">Alertas para moradores</p>
+              </div>
+          </button>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 md:gap-8">

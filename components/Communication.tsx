@@ -1,10 +1,11 @@
+
 import React, { useState } from 'react';
 import { MOCK_NOTICES, MOCK_POLLS } from '../constants';
-import { Alert, Notice } from '../types';
+import { Alert, Notice, Poll } from '../types';
 import { 
     FileText, MessageSquare, PieChart, Download, Clock, Send, 
     Bell, Users, Smartphone, Mail, AlertTriangle, CheckCircle, 
-    History, Megaphone, Trash2, Plus, Info, Check
+    History, Megaphone, Trash2, Plus, Info, Check, X
 } from 'lucide-react';
 
 interface CommunicationProps {
@@ -15,6 +16,16 @@ interface CommunicationProps {
 const Communication: React.FC<CommunicationProps> = ({ alerts = [], onAddAlert }) => {
   const [activeTab, setActiveTab] = useState<'BOARD' | 'ALERTS' | 'POLLS'>('BOARD');
   
+  // STATE: NOTICES (Mural Digital)
+  const [notices, setNotices] = useState<Notice[]>(MOCK_NOTICES);
+  const [isNoticeModalOpen, setIsNoticeModalOpen] = useState(false);
+  const [newNotice, setNewNotice] = useState<Partial<Notice>>({ urgency: 'LOW', title: '', content: '' });
+
+  // STATE: POLLS (Votação)
+  const [polls, setPolls] = useState<Poll[]>(MOCK_POLLS);
+  const [votingPollId, setVotingPollId] = useState<string | null>(null);
+  const [selectedOption, setSelectedOption] = useState<string | null>(null);
+
   // ALERT WIZARD STATE
   const [alertTitle, setAlertTitle] = useState('');
   const [alertMsg, setAlertMsg] = useState('');
@@ -64,6 +75,43 @@ const Communication: React.FC<CommunicationProps> = ({ alerts = [], onAddAlert }
       }, 1500);
   };
 
+  const handleCreateNotice = () => {
+      if (!newNotice.title || !newNotice.content) return;
+      const createdNotice: Notice = {
+          id: `notice_${Date.now()}`,
+          title: newNotice.title,
+          content: newNotice.content,
+          urgency: newNotice.urgency || 'LOW',
+          date: new Date().toISOString(),
+          author: 'Administração'
+      };
+      setNotices([createdNotice, ...notices]);
+      setIsNoticeModalOpen(false);
+      setNewNotice({ urgency: 'LOW', title: '', content: '' });
+  };
+
+  const handleVote = (pollId: string) => {
+      if (!selectedOption) return;
+      
+      const updatedPolls = polls.map(p => {
+          if (p.id === pollId) {
+              const updatedOptions = p.options.map(opt => {
+                  if (opt.id === selectedOption) {
+                      return { ...opt, votes: opt.votes + 1 };
+                  }
+                  return opt;
+              });
+              return { ...p, options: updatedOptions, totalVotes: p.totalVotes + 1 };
+          }
+          return p;
+      });
+
+      setPolls(updatedPolls);
+      setVotingPollId(null);
+      setSelectedOption(null);
+      alert('Voto registrado com sucesso!');
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
         {/* TABS */}
@@ -93,13 +141,13 @@ const Communication: React.FC<CommunicationProps> = ({ alerts = [], onAddAlert }
                     <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                         <MessageSquare className="text-indigo-600" /> Comunicados Fixados
                     </h2>
-                    <button className="text-sm font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors border border-indigo-100">
-                        <Plus size={16} className="inline mr-1"/> Novo Aviso
+                    <button onClick={() => setIsNoticeModalOpen(true)} className="text-sm font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors border border-indigo-100 flex items-center gap-1">
+                        <Plus size={16} /> Novo Aviso
                     </button>
                 </div>
                 
                 <div className="space-y-4">
-                    {MOCK_NOTICES.map(notice => (
+                    {notices.map(notice => (
                     <div key={notice.id} className="bg-white p-6 rounded-2xl shadow-md border border-slate-100 relative overflow-hidden group hover:border-indigo-200 transition-all">
                         <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${
                         notice.urgency === 'HIGH' ? 'bg-rose-500' : 
@@ -284,41 +332,105 @@ const Communication: React.FC<CommunicationProps> = ({ alerts = [], onAddAlert }
 
       {activeTab === 'POLLS' && (
           <div className="space-y-6 animate-fade-in">
-             {MOCK_POLLS.map(poll => (
+             {polls.map(poll => (
               <div key={poll.id} className="bg-white p-8 rounded-2xl shadow-md border border-slate-100 max-w-2xl">
                 <div className="flex justify-between items-start mb-6">
                   <h3 className="font-bold text-slate-800 text-lg">{poll.question}</h3>
-                  <span className="bg-emerald-100 text-emerald-800 text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wide">Em andamento</span>
+                  <span className={`text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wide ${poll.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>
+                      {poll.status === 'ACTIVE' ? 'Em andamento' : 'Encerrada'}
+                  </span>
                 </div>
                 
                 <div className="space-y-5">
-                  {poll.options.map(option => {
-                    const percentage = Math.round((option.votes / poll.totalVotes) * 100);
-                    return (
-                      <div key={option.id} className="space-y-2">
-                        <div className="flex justify-between text-sm font-medium">
-                          <span className="text-slate-700">{option.text}</span>
-                          <span className="text-slate-500">{percentage}%</span>
-                        </div>
-                        <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
-                          <div 
-                            className="bg-indigo-600 h-2.5 rounded-full transition-all duration-1000 ease-out" 
-                            style={{ width: `${percentage}%` }}
-                          />
-                        </div>
+                  {votingPollId === poll.id ? (
+                      // VOTING MODE
+                      <div className="space-y-3">
+                          {poll.options.map(option => (
+                              <label key={option.id} className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${selectedOption === option.id ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+                                  <input type="radio" name={`poll_${poll.id}`} checked={selectedOption === option.id} onChange={() => setSelectedOption(option.id)} className="w-5 h-5 text-indigo-600 focus:ring-indigo-500"/>
+                                  <span className="font-medium text-slate-700">{option.text}</span>
+                              </label>
+                          ))}
                       </div>
-                    );
-                  })}
+                  ) : (
+                      // RESULTS MODE
+                      poll.options.map(option => {
+                        const percentage = poll.totalVotes > 0 ? Math.round((option.votes / poll.totalVotes) * 100) : 0;
+                        return (
+                          <div key={option.id} className="space-y-2">
+                            <div className="flex justify-between text-sm font-medium">
+                              <span className="text-slate-700">{option.text}</span>
+                              <span className="text-slate-500">{percentage}% ({option.votes})</span>
+                            </div>
+                            <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                              <div 
+                                className="bg-indigo-600 h-2.5 rounded-full transition-all duration-1000 ease-out" 
+                                style={{ width: `${percentage}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })
+                  )}
                 </div>
                 
                 <div className="mt-8 pt-6 border-t border-slate-100 flex justify-between items-center">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">{poll.totalVotes} votos registrados</span>
-                  <button className="text-sm bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-md shadow-indigo-200">
-                    Votar Agora
-                  </button>
+                  {poll.status === 'ACTIVE' && (
+                      votingPollId === poll.id ? (
+                          <div className="flex gap-2">
+                              <button onClick={() => { setVotingPollId(null); setSelectedOption(null); }} className="text-sm border border-slate-200 text-slate-600 px-4 py-2 rounded-xl font-bold hover:bg-slate-50 transition-all">Cancelar</button>
+                              <button onClick={() => handleVote(poll.id)} disabled={!selectedOption} className="text-sm bg-indigo-600 text-white px-5 py-2 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-md disabled:opacity-50">Confirmar Voto</button>
+                          </div>
+                      ) : (
+                          <button onClick={() => setVotingPollId(poll.id)} className="text-sm bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-md shadow-indigo-200">
+                            Votar Agora
+                          </button>
+                      )
+                  )}
                 </div>
               </div>
             ))}
+          </div>
+      )}
+
+      {/* NEW NOTICE MODAL */}
+      {isNoticeModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+                  <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                      <h3 className="font-bold text-lg text-slate-800">Novo Comunicado</h3>
+                      <button onClick={() => setIsNoticeModalOpen(false)}><X size={24} className="text-slate-400 hover:text-slate-600"/></button>
+                  </div>
+                  <div className="p-6 space-y-4">
+                      <div>
+                          <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Título</label>
+                          <input type="text" value={newNotice.title} onChange={e => setNewNotice({...newNotice, title: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all" placeholder="Ex: Aviso de Manutenção"/>
+                      </div>
+                      <div>
+                          <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Conteúdo</label>
+                          <textarea rows={4} value={newNotice.content} onChange={e => setNewNotice({...newNotice, content: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all resize-none" placeholder="Detalhes do aviso..."></textarea>
+                      </div>
+                      <div>
+                          <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Urgência</label>
+                          <div className="flex gap-2">
+                              {['LOW', 'MEDIUM', 'HIGH'].map(urgency => (
+                                  <button 
+                                    key={urgency} 
+                                    onClick={() => setNewNotice({...newNotice, urgency: urgency as any})}
+                                    className={`flex-1 py-2 rounded-lg text-xs font-bold border transition-all ${newNotice.urgency === urgency ? (urgency === 'HIGH' ? 'bg-rose-50 border-rose-200 text-rose-700' : urgency === 'MEDIUM' ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-indigo-50 border-indigo-200 text-indigo-700') : 'border-slate-200 text-slate-500'}`}
+                                  >
+                                      {urgency === 'HIGH' ? 'Urgente' : urgency === 'MEDIUM' ? 'Atenção' : 'Informativo'}
+                                  </button>
+                              ))}
+                          </div>
+                      </div>
+                  </div>
+                  <div className="p-5 border-t border-slate-100 flex justify-end gap-3 bg-slate-50">
+                      <button onClick={() => setIsNoticeModalOpen(false)} className="px-5 py-2 text-slate-600 font-bold hover:bg-slate-200 rounded-xl transition-colors text-sm">Cancelar</button>
+                      <button onClick={handleCreateNotice} className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all text-sm">Publicar Aviso</button>
+                  </div>
+              </div>
           </div>
       )}
     </div>
