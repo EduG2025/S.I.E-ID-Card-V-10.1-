@@ -1,5 +1,4 @@
-
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, memo } from 'react';
 import { MOCK_USERS_LIST, AVAILABLE_ROLES } from '../constants';
 import { User, SystemInfo, IdCardTemplate, FinancialRecord, CardElement, SocialQuestionnaireData } from '../types';
 import { 
@@ -29,7 +28,7 @@ interface CardFaceRendererProps {
   onEditImage?: () => void;
 }
 
-const CardFaceRenderer = ({ template, side, user, systemInfo, onEditImage }: CardFaceRendererProps) => {
+const CardFaceRenderer = memo(({ template, side, user, systemInfo, onEditImage }: CardFaceRendererProps) => {
     // ... (Same implementation as previous file) ...
     return (
         <div style={{ width: `${template.orientation === 'landscape' ? template.width : template.height}px`, height: `${template.orientation === 'landscape' ? template.height : template.width}px`, background: side === 'front' ? template.frontBackground : template.backBackground, position: 'relative', overflow: 'hidden', borderRadius: '8px', boxShadow: 'none' }}>
@@ -52,7 +51,7 @@ const CardFaceRenderer = ({ template, side, user, systemInfo, onEditImage }: Car
               })}
           </div>
     );
-};
+});
 
 const UserManagement: React.FC<UserManagementProps> = ({ systemInfo, templates, transactions, onUpdateTransactions }) => {
   // ... (State logic unchanged except tabs)
@@ -93,18 +92,23 @@ const UserManagement: React.FC<UserManagementProps> = ({ systemInfo, templates, 
   const [isFinancialModalOpen, setIsFinancialModalOpen] = useState(false);
   const [manualEntry, setManualEntry] = useState<Partial<FinancialRecord>>({ type: 'INCOME', status: 'PENDING', description: 'Cobrança Extra', date: new Date().toISOString().slice(0, 10), category: 'Mensalidade' });
 
-  const filteredUsers = users.filter(u => {
-      const matchesSearch = u.name.toLowerCase().includes(search.toLowerCase()) || (u.unit?.toLowerCase() || '').includes(search.toLowerCase());
-      const matchesRole = roleFilter === 'ALL' || u.role === roleFilter;
-      const matchesFin = financialFilter === 'ALL' || (u.financialStatus === financialFilter);
-      return matchesSearch && matchesRole && matchesFin;
-  });
+  const filteredUsers = useMemo(() => {
+      return users.filter(u => {
+          const matchesSearch = u.name.toLowerCase().includes(search.toLowerCase()) || (u.unit?.toLowerCase() || '').includes(search.toLowerCase());
+          const matchesRole = roleFilter === 'ALL' || u.role === roleFilter;
+          const matchesFin = financialFilter === 'ALL' || (u.financialStatus === financialFilter);
+          return matchesSearch && matchesRole && matchesFin;
+      });
+  }, [users, search, roleFilter, financialFilter]);
 
   useEffect(() => { setCurrentPage(1); }, [search, roleFilter, financialFilter]);
   const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedUsers = filteredUsers.slice(startIndex, startIndex + itemsPerPage);
-  const userTransactions = editingUser ? transactions.filter(t => t.userId === editingUser.id || t.userId === undefined) : [];
+  
+  const userTransactions = useMemo(() => {
+      return editingUser ? transactions.filter(t => t.userId === editingUser.id || t.userId === undefined) : [];
+  }, [editingUser, transactions]);
 
   // ... (Handlers remain unchanged) ...
   const handleCreateUser = () => { setEditingUser({ id: Date.now().toString(), name: '', role: 'Morador', active: true, avatarUrl: '', phone: '', documents: [], financialSettings: { monthlyFee: 0, dueDay: 10, isDonor: false, donationAmount: 0, autoGenerateCharge: true }, financialStatus: 'OK', profileCompletion: 20, qrCodeData: `ACCESS-${Date.now()}` } as User); setActiveTab('PERSONAL'); };

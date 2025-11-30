@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { MOCK_FINANCIALS, MOCK_INCIDENTS, MOCK_NOTICES } from '../constants';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { ArrowUpRight, ArrowDownRight, AlertTriangle, Users, Calendar, UserPlus, FileText, Send } from 'lucide-react';
@@ -10,13 +10,13 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const [timeFilter, setTimeFilter] = useState('SEMESTER');
 
-  const totalIncome = MOCK_FINANCIALS.filter(f => f.type === 'INCOME').reduce((acc, curr) => acc + curr.amount, 0);
-  const totalExpense = MOCK_FINANCIALS.filter(f => f.type === 'EXPENSE').reduce((acc, curr) => acc + curr.amount, 0);
-  const balance = totalIncome - totalExpense;
-  const openIncidents = MOCK_INCIDENTS.filter(i => i.status !== 'RESOLVED').length;
+  const totalIncome = useMemo(() => MOCK_FINANCIALS.filter(f => f.type === 'INCOME').reduce((acc, curr) => acc + curr.amount, 0), []);
+  const totalExpense = useMemo(() => MOCK_FINANCIALS.filter(f => f.type === 'EXPENSE').reduce((acc, curr) => acc + curr.amount, 0), []);
+  const balance = useMemo(() => totalIncome - totalExpense, [totalIncome, totalExpense]);
+  const openIncidents = useMemo(() => MOCK_INCIDENTS.filter(i => i.status !== 'RESOLVED').length, []);
 
   // Função para gerar dados simulados baseados no filtro selecionado
-  const getChartData = () => {
+  const chartData = useMemo(() => {
     switch (timeFilter) {
       case 'YEAR':
         return [
@@ -50,9 +50,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           { name: 'Jun', receita: 14000, despesa: 11000 },
         ];
     }
-  };
-
-  const chartData = getChartData();
+  }, [timeFilter]);
 
   const StatCard = ({ title, value, trend, icon: Icon, colorClass, borderClass }: any) => (
       <div className={`bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-slate-200 ${borderClass} hover:shadow-md transition-shadow`}>

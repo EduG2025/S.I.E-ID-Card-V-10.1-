@@ -1,18 +1,18 @@
-
-import React, { useState } from 'react';
+import React, { useState, Suspense, lazy } from 'react';
 import { MOCK_USER, MENU_ITEMS, MOCK_SYSTEM_INFO, MOCK_TEMPLATES, MOCK_USERS_LIST, MOCK_ALERTS, MOCK_FINANCIALS } from './constants';
 import { SystemInfo, IdCardTemplate, User, UserRole, Alert, FinancialRecord } from './types';
-import { LogOut, Search, Bell, Menu, X, Lock, User as UserIcon, ArrowRight, AlertCircle, Building, CheckCircle, ArrowLeft, Info, Check, AlertTriangle, ShieldAlert, Construction, ClipboardList, Calendar, Wallet, Map } from 'lucide-react';
-import Dashboard from './components/Dashboard';
-import Finance from './components/Finance';
-import Communication from './components/Communication';
-import SmartMap from './components/SmartMap';
-import Settings from './components/Settings';
-import UserManagement from './components/UserManagement';
-import Surveys from './components/Surveys';
-import Timeline from './components/Timeline';
-import Operations from './components/Operations';
-import DemographicAnalysis from './components/DemographicAnalysis';
+import { LogOut, Search, Bell, Menu, X, Lock, User as UserIcon, ArrowRight, AlertCircle, Building, CheckCircle, ArrowLeft, Info, Check, AlertTriangle, ShieldAlert, Construction, ClipboardList, Calendar, Wallet, Map, Loader2 } from 'lucide-react';
+
+// Lazy load components
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const Finance = lazy(() => import('./components/Finance'));
+const Communication = lazy(() => import('./components/Communication'));
+const Settings = lazy(() => import('./components/Settings'));
+const UserManagement = lazy(() => import('./components/UserManagement'));
+const Surveys = lazy(() => import('./components/Surveys'));
+const Timeline = lazy(() => import('./components/Timeline'));
+const Operations = lazy(() => import('./components/Operations'));
+const DemographicAnalysis = lazy(() => import('./components/DemographicAnalysis'));
 
 const App: React.FC = () => {
   // Authentication State
@@ -144,19 +144,25 @@ const App: React.FC = () => {
   });
 
   const renderContent = () => {
-    switch (activeTab) {
-      case 'dashboard': return <Dashboard onNavigate={setActiveTab} />;
-      case 'users': return <UserManagement systemInfo={systemInfo} templates={templates} transactions={financialRecords} onUpdateTransactions={setFinancialRecords} />;
-      case 'demographics': return <DemographicAnalysis systemInfo={systemInfo} />;
-      case 'finance': return <Finance transactions={financialRecords} onUpdateTransactions={setFinancialRecords} />;
-      case 'social': return <Communication alerts={systemAlerts} onAddAlert={handleAddAlert} />;
-      // case 'map': Removido, agora está dentro de demographics
-      case 'operations': return <Operations />;
-      case 'surveys': return <Surveys />;
-      case 'timeline': return <Timeline />;
-      case 'settings': return <Settings systemInfo={systemInfo} onUpdateSystemInfo={setSystemInfo} templates={templates} onUpdateTemplates={setTemplates} usersList={allUsers} onUpdateUsers={setAllUsers} />;
-      default: return <Dashboard onNavigate={setActiveTab} />;
-    }
+    return (
+      <Suspense fallback={<div className="flex flex-col items-center justify-center h-full text-indigo-600 gap-4"><Loader2 className="animate-spin" size={48} /><p className="font-medium text-slate-500">Carregando módulo...</p></div>}>
+        {(() => {
+            switch (activeTab) {
+              case 'dashboard': return <Dashboard onNavigate={setActiveTab} />;
+              case 'users': return <UserManagement systemInfo={systemInfo} templates={templates} transactions={financialRecords} onUpdateTransactions={setFinancialRecords} />;
+              case 'demographics': return <DemographicAnalysis systemInfo={systemInfo} />;
+              case 'finance': return <Finance transactions={financialRecords} onUpdateTransactions={setFinancialRecords} />;
+              case 'social': return <Communication alerts={systemAlerts} onAddAlert={handleAddAlert} />;
+              // case 'map': Removido, agora está dentro de demographics
+              case 'operations': return <Operations />;
+              case 'surveys': return <Surveys />;
+              case 'timeline': return <Timeline />;
+              case 'settings': return <Settings systemInfo={systemInfo} onUpdateSystemInfo={setSystemInfo} templates={templates} onUpdateTemplates={setTemplates} usersList={allUsers} onUpdateUsers={setAllUsers} />;
+              default: return <Dashboard onNavigate={setActiveTab} />;
+            }
+        })()}
+      </Suspense>
+    );
   };
 
   // --- LOGIN & REGISTER SCREEN ---
