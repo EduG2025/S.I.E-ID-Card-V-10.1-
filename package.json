@@ -1,39 +1,39 @@
 {
   "name": "sie-sistema-inteligente",
-  "version": "1.0.0",
-  "description": "S.I.E - Sistema Inteligente Ativo",
-  "main": "server.cjs",
+  "version": "1.0.1",
+  "description": "S.I.E - Sistema Inteligente Ativo (Production Build)",
+  "private": true,
+  "type": "module",
   "scripts": {
-    "start": "node server.cjs",
     "dev": "vite",
-    "build": "vite build",
+    "build": "tsc && vite build",
     "preview": "vite preview",
-    "server": "nodemon server.cjs"
+    "start": "node server.js"
   },
   "dependencies": {
+    "axios": "^1.6.2",
+    "clsx": "^2.0.0",
+    "date-fns": "^2.30.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.1",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.294.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "lucide-react": "^0.263.1",
-    "recharts": "^2.7.2",
-    "express": "^4.18.2",
-    "mysql2": "^3.6.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "bcrypt": "^5.1.0",
-    "jsonwebtoken": "^9.0.0",
-    "multer": "^1.4.5-lts.1",
-    "clsx": "^2.0.0",
-    "tailwind-merge": "^1.14.0"
+    "react-router-dom": "^6.20.0",
+    "recharts": "^2.10.3",
+    "tailwind-merge": "^2.0.0"
   },
   "devDependencies": {
-    "@types/react": "^18.2.15",
-    "@types/react-dom": "^18.2.7",
-    "@vitejs/plugin-react": "^4.0.3",
-    "autoprefixer": "^10.4.14",
-    "postcss": "^8.4.27",
-    "tailwindcss": "^3.3.3",
-    "typescript": "^5.0.2",
-    "vite": "^4.4.5",
-    "nodemon": "^3.0.1"
+    "@types/leaflet": "^1.9.8",
+    "@types/node": "^20.10.0",
+    "@types/react": "^18.2.37",
+    "@types/react-dom": "^18.2.15",
+    "@vitejs/plugin-react": "^4.2.0",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.31",
+    "tailwindcss": "^3.3.5",
+    "typescript": "^5.2.2",
+    "vite": "^5.0.0"
   }
 }
