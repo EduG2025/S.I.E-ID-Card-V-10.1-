@@ -1,5 +1,6 @@
+
 import React, { useState, Suspense, lazy, useEffect } from 'react';
-import { MENU_ITEMS, DEFAULT_SYSTEM_INFO } from './constants';
+import { MENU_ITEMS, DEFAULT_SYSTEM_INFO, DEFAULT_ID_CARD_TEMPLATE } from './constants';
 import { SystemInfo, IdCardTemplate, User, UserRole, Alert, FinancialRecord } from './types';
 import { LogOut, Bell, Menu, X, User as UserIcon, Loader2 } from 'lucide-react';
 import { systemService, authService, communicationService, financialService, userService } from './services/api';
@@ -54,7 +55,15 @@ const App: React.FC = () => {
                 ]);
 
                 setSystemInfo(infoRes.data || DEFAULT_SYSTEM_INFO);
-                setTemplates(templatesRes.data || []);
+                
+                // Ensure at least the default template exists
+                const loadedTemplates = templatesRes.data || [];
+                if (loadedTemplates.length === 0) {
+                    setTemplates([DEFAULT_ID_CARD_TEMPLATE]);
+                } else {
+                    setTemplates(loadedTemplates);
+                }
+
                 setSystemAlerts(alertsRes.data || []);
             }
         } catch (error) {

@@ -1,6 +1,8 @@
+
 import React, { useState, useRef, useEffect, useMemo, memo } from 'react';
 import { MOCK_USERS_LIST, AVAILABLE_ROLES } from '../constants';
 import { User, SystemInfo, IdCardTemplate, FinancialRecord, CardElement, SocialQuestionnaireData } from '../types';
+import { GoogleGenAI } from "@google/genai";
 import { 
   Save, Sparkles, Search, Edit2, Trash2, CreditCard, User as UserIcon, 
   Printer, Image as ImageIcon, X, Plus, Wallet, DollarSign,
@@ -12,7 +14,6 @@ import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import SocialQuestionnaire from './SocialQuestionnaire';
 
-// ... (Existing interfaces and CardFaceRenderer remain unchanged) ...
 interface UserManagementProps {
   systemInfo: SystemInfo;
   templates: IdCardTemplate[];
@@ -29,7 +30,6 @@ interface CardFaceRendererProps {
 }
 
 const CardFaceRenderer = memo(({ template, side, user, systemInfo, onEditImage }: CardFaceRendererProps) => {
-    // ... (Same implementation as previous file) ...
     return (
         <div style={{ width: `${template.orientation === 'landscape' ? template.width : template.height}px`, height: `${template.orientation === 'landscape' ? template.height : template.width}px`, background: side === 'front' ? template.frontBackground : template.backBackground, position: 'relative', overflow: 'hidden', borderRadius: '8px', boxShadow: 'none' }}>
               {template.elements.filter(el => el.layer === side).map(el => {
@@ -38,7 +38,20 @@ const CardFaceRenderer = memo(({ template, side, user, systemInfo, onEditImage }
                       if (el.field === 'system.name') content = systemInfo.name;
                       else if (el.field === 'system.address') content = systemInfo.address && el.field === 'system.address' ? `${systemInfo.address} - CNPJ: ${systemInfo.cnpj}` : systemInfo.address;
                       else if (el.field === 'system.cnpj') content = `CNPJ: ${systemInfo.cnpj}`;
-                      else content = String((user as any)[el.field] || '---');
+                      else {
+                          const rawValue = (user as any)[el.field];
+                          if ((el.field === 'birthDate' || el.field === 'admissionDate') && rawValue) {
+                              if (typeof rawValue === 'string' && rawValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                                  const [year, month, day] = rawValue.split('-');
+                                  content = `${day}/${month}/${year}`;
+                              } else {
+                                  const dateObj = new Date(rawValue);
+                                  content = !isNaN(dateObj.getTime()) ? dateObj.toLocaleDateString('pt-BR') : rawValue;
+                              }
+                          } else {
+                              content = String(rawValue || '---');
+                          }
+                      }
                   }
                   const isAvatar = el.field === 'avatarUrl';
                   return (
@@ -54,7 +67,6 @@ const CardFaceRenderer = memo(({ template, side, user, systemInfo, onEditImage }
 });
 
 const UserManagement: React.FC<UserManagementProps> = ({ systemInfo, templates, transactions, onUpdateTransactions }) => {
-  // ... (State logic unchanged except tabs)
   const [users, setUsers] = useState<User[]>(MOCK_USERS_LIST);
   const [search, setSearch] = useState('');
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -110,17 +122,134 @@ const UserManagement: React.FC<UserManagementProps> = ({ systemInfo, templates, 
       return editingUser ? transactions.filter(t => t.userId === editingUser.id || t.userId === undefined) : [];
   }, [editingUser, transactions]);
 
-  // ... (Handlers remain unchanged) ...
+  // HANDLERS
   const handleCreateUser = () => { setEditingUser({ id: Date.now().toString(), name: '', role: 'Morador', active: true, avatarUrl: '', phone: '', documents: [], financialSettings: { monthlyFee: 0, dueDay: 10, isDonor: false, donationAmount: 0, autoGenerateCharge: true }, financialStatus: 'OK', profileCompletion: 20, qrCodeData: `ACCESS-${Date.now()}` } as User); setActiveTab('PERSONAL'); };
   const handleEditUser = (user: User) => { const userWithQr = { ...user, qrCodeData: user.qrCodeData || `ACCESS-${user.id}-${systemInfo.cnpj.replace(/\D/g,'')}`, financialSettings: user.financialSettings || { monthlyFee: 0, dueDay: 10, isDonor: false, donationAmount: 0, autoGenerateCharge: true } }; setEditingUser(userWithQr); setActiveTab('PERSONAL'); };
   const validatePhone = (phone: string | undefined): boolean => { if (!phone) return false; const regex = /^\(?\d{2}\)?\s?\d{4,5}-?\d{4}$/; return regex.test(phone); };
   const handleSaveUser = () => { if (!editingUser) return; if (!editingUser.name) { alert('Nome é obrigatório.'); setActiveTab('PERSONAL'); return; } if (!editingUser.phone || !validatePhone(editingUser.phone)) { alert('Telefone de contato é obrigatório e deve estar no formato (99) 99999-9999'); setActiveTab('CONTACT'); return; } const finalUser = { ...editingUser }; const exists = users.find(u => u.id === editingUser.id); setUsers(exists ? users.map(u => u.id === editingUser.id ? finalUser : u) : [...users, finalUser]); setEditingUser(null); };
-  const handleCreateManualEntry = () => { if (!editingUser || !manualEntry.amount || !manualEntry.description) return; const newRecord: FinancialRecord = { id: `manual_${Date.now()}`, description: manualEntry.description, amount: Number(manualEntry.amount), type: manualEntry.type || 'INCOME', status: manualEntry.status || 'PENDING', date: manualEntry.date || new Date().toISOString(), category: manualEntry.category || 'Geral', userId: editingUser.id, dueDate: manualEntry.dueDate }; onUpdateTransactions([newRecord, ...transactions]); setIsFinancialModalOpen(false); setManualEntry({ type: 'INCOME', status: 'PENDING', description: '', amount: 0, date: new Date().toISOString().slice(0, 10) }); };
+  const handleCreateManualEntry = () => { if (!editingUser || !manualEntry.amount || !manualEntry.description) return; const newRecord: FinancialRecord = { id: `manual_${Date.now()}`, description: manualEntry.description, amount: Number(manualEntry.amount), type: manualEntry.type || 'INCOME', status: manualEntry.status || 'PENDING', date: manualEntry.date || new Date().toISOString(), category: manualEntry.category || 'Geral', userId: editingUser.id, dueDate: manualEntry.dueDate }; onUpdateTransactions([newRecord, ...transactions]); setIsFinancialModalOpen(false); setManualEntry({ type: 'INCOME', status: 'PENDING', description: '', amount: 0, date: new Date().toISOString().slice(0, 10), category: 'Mensalidade' }); };
   const handleAiAutoFill = () => { if (editingUser) { const newData = { ...editingUser }; if (!newData.email && newData.name) newData.email = `${newData.name.toLowerCase().replace(/\s/g, '.')}@condominio.com`; setEditingUser(newData); setAiSuggestion('Preenchi o e-mail sugerido.'); setTimeout(() => setAiSuggestion(null), 3000); } };
-  const handleAnalyzeDocument = (docName: string) => { setIsAnalyzingDoc(true); setTimeout(() => { setIsAnalyzingDoc(false); const mockResult: Partial<User> = {}; const lowerName = docName.toLowerCase(); if (lowerName.includes('rg') || lowerName.includes('cnh') || lowerName.includes('identidade')) { mockResult.cpfCnpj = '123.456.789-00'; mockResult.admissionDate = '1985-10-20'; if (!editingUser?.name) mockResult.name = 'Nome Extraído do Documento'; } if (lowerName.includes('comprovante') || lowerName.includes('conta') || lowerName.includes('luz') || lowerName.includes('agua')) { mockResult.address = 'Rua da Inteligência Artificial, 999, Bloco C - Piraí/RJ'; mockResult.unit = 'Bloco C - 999'; } if (Object.keys(mockResult).length === 0) { mockResult.notes = 'Documento analisado. Nenhuma informação estruturada encontrada, mas o documento foi indexado.'; } setExtractedData(mockResult); }, 2000); };
+  const handleAnalyzeDocument = (docName: string) => { setIsAnalyzingDoc(true); setTimeout(() => { setIsAnalyzingDoc(false); const mockResult: Partial<User> = {}; const lowerName = docName.toLowerCase(); if (lowerName.includes('rg') || lowerName.includes('cnh') || lowerName.includes('identidade')) { mockResult.cpfCnpj = '123.456.789-00'; mockResult.rg = '20.555.444-2'; mockResult.birthDate = '1985-10-20'; mockResult.admissionDate = '2023-01-15'; if (!editingUser?.name) mockResult.name = 'Nome Extraído do Documento'; } if (lowerName.includes('comprovante') || lowerName.includes('conta') || lowerName.includes('luz') || lowerName.includes('agua')) { mockResult.address = 'Rua da Inteligência Artificial, 999, Bloco C - Piraí/RJ'; mockResult.unit = 'Bloco C - 999'; } if (Object.keys(mockResult).length === 0) { mockResult.notes = 'Documento analisado. Nenhuma informação estruturada encontrada, mas o documento foi indexado.'; } setExtractedData(mockResult); }, 2000); };
   const confirmDataExtraction = () => { if (editingUser && extractedData) { setEditingUser({ ...editingUser, ...extractedData }); setExtractedData(null); setAiSuggestion('Dados extraídos foram aplicados ao cadastro!'); setTimeout(() => setAiSuggestion(null), 4000); } };
+  
   const triggerOCRRegistration = () => { ocrInputRef.current?.click(); };
-  const processOCRRegistration = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files && e.target.files[0]) { setIsOCRProcessing(true); const file = e.target.files[0]; setTimeout(() => { setIsOCRProcessing(false); const newUser: User = { id: Date.now().toString(), name: 'FERNANDO ALMEIDA COSTA', role: 'Morador', active: true, cpfCnpj: '987.654.321-00', admissionDate: '1990-05-15', phone: '(11) 98765-4321', unit: 'Bloco C - 101', avatarUrl: '', documents: [{ name: file.name, type: 'DOCUMENTO_OCR', date: new Date().toISOString() }], financialSettings: { monthlyFee: 0, dueDay: 10, isDonor: false, donationAmount: 0, autoGenerateCharge: true }, financialStatus: 'OK', profileCompletion: 60, qrCodeData: `ACCESS-${Date.now()}` }; setEditingUser(newUser); setActiveTab('PERSONAL'); setAiSuggestion('Cadastro iniciado automaticamente via Leitura de Documento!'); if (ocrInputRef.current) ocrInputRef.current.value = ''; }, 2500); } };
+  
+  // Real OCR implementation using Gemini
+  const processOCRRegistration = async (e: React.ChangeEvent<HTMLInputElement>) => { 
+    if (e.target.files && e.target.files[0]) { 
+      setIsOCRProcessing(true); 
+      const file = e.target.files[0];
+      
+      try {
+          // 1. Convert to Base64
+          const base64Data = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                  const result = reader.result as string;
+                  resolve(result.split(',')[1]); // Keep only the data
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(file);
+          });
+
+          // 2. Initialize Gemini (requires API Key from env)
+          const apiKey = process.env.API_KEY || '';
+          // Note: API Key should ideally be proxied in production, but handled here as per instructions
+          
+          if (apiKey) {
+            const ai = new GoogleGenAI({ apiKey });
+            
+            // 3. Generate Content
+            const prompt = `
+                Analise este documento (Identidade, RG, CNH). 
+                Extraia os seguintes dados em JSON estrito:
+                {
+                    "name": "Nome Completo",
+                    "cpfCnpj": "CPF formatado 000.000.000-00",
+                    "rg": "RG formatado",
+                    "birthDate": "YYYY-MM-DD",
+                    "address": "Endereço completo se houver"
+                }
+                Se algum dado não for encontrado, retorne null no campo.
+            `;
+
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: {
+                    parts: [
+                        { text: prompt },
+                        { inlineData: { mimeType: file.type, data: base64Data } }
+                    ]
+                }
+            });
+            
+            const responseText = response.text;
+            if (!responseText) throw new Error("No text response from Gemini");
+
+            const jsonStr = responseText.replace(/```json|```/g, '').trim();
+            const extracted = JSON.parse(jsonStr);
+
+            // 4. Map to User
+            const newUser: User = { 
+                id: Date.now().toString(), 
+                name: extracted.name?.toUpperCase() || 'NOME NÃO IDENTIFICADO', 
+                role: 'Morador', 
+                active: true, 
+                cpfCnpj: extracted.cpfCnpj || '', 
+                rg: extracted.rg || '',
+                birthDate: extracted.birthDate || '',
+                address: extracted.address || '',
+                admissionDate: new Date().toISOString().slice(0, 10), 
+                phone: '', 
+                unit: '', 
+                avatarUrl: '', 
+                documents: [{ name: file.name, type: 'DOCUMENTO_OCR', date: new Date().toISOString() }], 
+                financialSettings: { monthlyFee: 0, dueDay: 10, isDonor: false, donationAmount: 0, autoGenerateCharge: true }, 
+                financialStatus: 'OK', 
+                profileCompletion: 60, 
+                qrCodeData: `ACCESS-${Date.now()}` 
+            }; 
+            
+            setEditingUser(newUser); 
+            setActiveTab('PERSONAL'); 
+            setAiSuggestion('Dados extraídos com sucesso via Gemini AI!');
+          } else {
+              throw new Error("API Key missing");
+          }
+          
+      } catch (error) {
+          console.error("OCR Error or Mock Fallback", error);
+          // Mock Fallback if API fails or Key missing
+          setTimeout(() => { 
+            const newUser: User = { 
+                id: Date.now().toString(), 
+                name: 'FERNANDO ALMEIDA COSTA', 
+                role: 'Morador', 
+                active: true, 
+                cpfCnpj: '987.654.321-00', 
+                rg: '20.555.444-2',
+                birthDate: '1985-05-20',
+                admissionDate: '2024-01-15', 
+                phone: '(11) 98765-4321', 
+                unit: 'Bloco C - 101', 
+                avatarUrl: '', 
+                documents: [{ name: file.name, type: 'DOCUMENTO_OCR', date: new Date().toISOString() }], 
+                financialSettings: { monthlyFee: 0, dueDay: 10, isDonor: false, donationAmount: 0, autoGenerateCharge: true }, 
+                financialStatus: 'OK', 
+                profileCompletion: 60, 
+                qrCodeData: `ACCESS-${Date.now()}` 
+            }; 
+            setEditingUser(newUser); 
+            setActiveTab('PERSONAL'); 
+            setAiSuggestion('Modo Simulação: Cadastro iniciado via OCR!'); 
+          }, 2000); 
+      } finally {
+          setIsOCRProcessing(false); 
+          if (ocrInputRef.current) ocrInputRef.current.value = ''; 
+      }
+    } 
+  };
+
   const handleDocumentSelect = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files && e.target.files[0]) setSelectedFile(e.target.files[0]); };
   const handleAddDocument = () => { if (!selectedFile || !newDocName || !editingUser) return; const newDoc = { name: newDocName, type: selectedFile.type.split('/')[1].toUpperCase(), date: new Date().toISOString() }; setEditingUser({ ...editingUser, documents: [...(editingUser.documents || []), newDoc] }); setNewDocName(''); setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; if (newDocName.toLowerCase().includes('rg') || newDocName.toLowerCase().includes('comprovante')) { setAiSuggestion('Deseja analisar este documento para preencher o cadastro?'); } };
   const handleDeleteDocument = (index: number) => { if (!editingUser) return; const docs = [...(editingUser.documents || [])]; docs.splice(index, 1); setEditingUser({ ...editingUser, documents: docs }); };
@@ -143,93 +272,126 @@ const UserManagement: React.FC<UserManagementProps> = ({ systemInfo, templates, 
       }
   };
 
-  const renderCardPreview = () => { if (!editingUser) return null; const tpl = templates.find(t => t.id === selectedTemplateId) || templates[0]; if (!tpl) return <div>Modelo não encontrado</div>; return ( <div className="relative shadow-2xl rounded-lg transition-all duration-300 bg-white ring-4 ring-white/50" style={{ transform: 'scale(1.2)', transformOrigin: 'center' }}> <CardFaceRenderer template={tpl} side={cardViewSide} user={editingUser} systemInfo={systemInfo} onEditImage={() => { setTempPhotoUrl(editingUser.avatarUrl || null); setPhotoFilters({ brightness: 100, contrast: 100, grayscale: 0, bg: 'transparent' }); setShowPhotoEditor(true); }} /> </div> ); };
+  const renderCardPreview = () => { 
+      if (!editingUser) return null; 
+      const tpl = templates.find(t => t.id === selectedTemplateId) || templates[0]; 
+      if (!tpl) return <div>Modelo não encontrado</div>; 
+      
+      // Calculate Scale to fit container (assuming ~450px width available in sidebar)
+      // Base width of template is 600px
+      const scale = 0.65; // Adjust this scale to fit nicely
 
-  // --- RENDER ---
-  const renderUserList = () => (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-fade-in">
-       {/* (List content maintained) */}
-       <div className="p-6 border-b border-slate-100 flex flex-col gap-6 bg-white">
-        <div className="flex justify-between items-center">
-            <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2"><UserIcon size={20} className="text-indigo-600"/> Cadastros & Famílias</h3>
-            <div className="flex gap-2">
-                <input type="file" ref={ocrInputRef} className="hidden" accept="image/*,.pdf" onChange={processOCRRegistration} />
-                <button onClick={triggerOCRRegistration} disabled={isOCRProcessing} className="flex items-center gap-2 px-5 py-2.5 bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl hover:bg-indigo-200 transition-colors text-sm font-bold shadow-sm">
-                    {isOCRProcessing ? <RotateCcw className="animate-spin" size={18} /> : <ScanLine size={18} />} 
-                    {isOCRProcessing ? 'Lendo Doc...' : 'Cadastro via OCR'}
-                </button>
-                <button onClick={handleCreateUser} className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 text-sm font-bold shadow-lg shadow-indigo-200 transition-all">
-                    <UserPlus size={18} /> Novo Cadastro
-                </button>
-            </div>
-        </div>
-        <div className="flex flex-col md:flex-row gap-4">
-             <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                <input type="text" placeholder="Buscar por nome, unidade ou CPF..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all placeholder-slate-400" />
-            </div>
-            <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className="px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 cursor-pointer">
-                <option value="ALL">Todos os Cargos</option>
-                {AVAILABLE_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
-            <select value={financialFilter} onChange={(e) => setFinancialFilter(e.target.value as any)} className="px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 cursor-pointer">
-                <option value="ALL">Todos (Status Financeiro)</option>
-                <option value="OK">Em dia</option>
-                <option value="OVERDUE">Atrasado</option>
-                <option value="PENDING">Pendente</option>
-            </select>
-        </div>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-left">
-          <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-100">
-            <tr>
-              <th className="px-6 py-4 font-bold">Associado</th>
-              <th className="px-6 py-4 font-bold">Cargo / Função</th>
-              <th className="px-6 py-4 font-bold">Situação Financeira</th>
-              <th className="px-6 py-4 font-bold">Perfil</th>
-              <th className="px-6 py-4 font-bold text-right">Ações</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {paginatedUsers.map(user => {
-              const totalFee = (user.financialSettings?.monthlyFee || 0) + (user.financialSettings?.isDonor ? (user.financialSettings?.donationAmount || 0) : 0);
-              return (
-                <tr key={user.id} className={`hover:bg-indigo-50/30 transition-colors group ${user.financialStatus === 'OVERDUE' ? 'bg-rose-50/20' : ''}`}>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-4">
-                      <img src={user.avatarUrl || 'https://via.placeholder.com/150'} className="w-10 h-10 rounded-full object-cover border-2 border-white shadow-sm" />
-                      <div>
-                          <p className="font-bold text-slate-800 text-sm">{user.name}</p>
-                          <p className="text-xs text-slate-500 font-medium">{user.unit || 'Sem unidade vinculada'}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap"><span className="px-3 py-1 bg-white border border-slate-200 text-slate-600 rounded-lg text-xs font-bold shadow-sm">{user.role}</span></td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex flex-col gap-1">
-                          {user.financialStatus === 'OVERDUE' ? <span className="flex items-center gap-1.5 text-xs font-bold text-rose-600 bg-rose-100 px-3 py-1 rounded-full w-fit"><AlertTriangle size={12}/> Atrasado</span> : (user.financialStatus === 'PENDING' ? <span className="flex items-center gap-1.5 text-xs font-bold text-amber-600 bg-amber-100 px-3 py-1 rounded-full w-fit"><Clock size={12}/> Pendente</span> : <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 bg-emerald-100 px-3 py-1 rounded-full w-fit"><Check size={12}/> Em dia</span>)}
-                          {totalFee > 0 && <span className="text-[10px] text-slate-400 font-medium ml-1">Mensal: R$ {totalFee.toFixed(2)}{user.financialSettings?.isDonor && <span className="text-indigo-400 ml-1">(+Doação)</span>}</span>}
-                      </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap"><div className="flex items-center gap-3"><div className="w-24 bg-slate-200 rounded-full h-1.5 overflow-hidden"><div className="bg-indigo-500 h-1.5 rounded-full shadow-lg shadow-indigo-500/50" style={{ width: `${user.profileCompletion}%` }}></div></div><span className="text-xs font-bold text-slate-500">{user.profileCompletion}%</span></div></td>
-                  <td className="px-6 py-4 text-right whitespace-nowrap"><button onClick={() => handleEditUser(user)} className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 p-2 rounded-lg transition-all"><Edit2 size={18} /></button></td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <div className="flex items-center justify-between p-4 border-t border-slate-100 bg-slate-50">
-          <span className="text-xs text-slate-500 font-medium">Mostrando {startIndex + 1} a {Math.min(startIndex + itemsPerPage, filteredUsers.length)} de {filteredUsers.length} registros</span>
-          <div className="flex items-center gap-2">
-              <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="p-2 border border-slate-300 rounded-lg hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed bg-white text-slate-600 transition-colors"><ChevronLeft size={16} /></button>
-              <span className="text-xs font-bold text-slate-600 px-2">Página {currentPage} de {totalPages || 1}</span>
-              <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages || totalPages === 0} className="p-2 border border-slate-300 rounded-lg hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed bg-white text-slate-600 transition-colors"><ChevronRight size={16} /></button>
+      return ( 
+          <div style={{ width: `${tpl.width * scale}px`, height: `${tpl.height * scale}px`, position: 'relative' }}>
+              <div className="shadow-2xl rounded-lg bg-white ring-1 ring-slate-200" 
+                   style={{ 
+                       transform: `scale(${scale})`, 
+                       transformOrigin: 'top left', 
+                       width: `${tpl.width}px`, 
+                       height: `${tpl.height}px` 
+                   }}> 
+                  <CardFaceRenderer template={tpl} side={cardViewSide} user={editingUser} systemInfo={systemInfo} onEditImage={() => { setTempPhotoUrl(editingUser.avatarUrl || null); setPhotoFilters({ brightness: 100, contrast: 100, grayscale: 0, bg: 'transparent' }); setShowPhotoEditor(true); }} /> 
+              </div>
           </div>
+      ); 
+  };
+
+  const renderUserList = () => {
+    return (
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-fade-in">
+        <div className="p-5 border-b border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-50/50">
+          <div className="flex items-center gap-4 w-full md:w-auto">
+             <div className="relative w-full md:w-64">
+                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                 <input 
+                    type="text" 
+                    placeholder="Buscar morador ou unidade..." 
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all placeholder-slate-400"
+                 />
+             </div>
+             <div className="flex bg-white rounded-xl border border-slate-200 p-1">
+                 <button onClick={() => setRoleFilter('ALL')} className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${roleFilter === 'ALL' ? 'bg-indigo-100 text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}>Todos</button>
+                 <button onClick={() => setRoleFilter('Morador')} className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${roleFilter === 'Morador' ? 'bg-indigo-100 text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}>Moradores</button>
+                 <button onClick={() => setRoleFilter('ADMIN')} className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${roleFilter === 'ADMIN' ? 'bg-indigo-100 text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}>Staff</button>
+             </div>
+          </div>
+          <div className="flex gap-2">
+            <input type="file" ref={ocrInputRef} className="hidden" accept="image/*,.pdf" onChange={processOCRRegistration} />
+            <button onClick={triggerOCRRegistration} disabled={isOCRProcessing} className="flex items-center gap-2 px-4 py-2 bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl hover:bg-indigo-200 transition-colors text-sm font-bold shadow-sm">
+                {isOCRProcessing ? <RotateCcw className="animate-spin" size={16} /> : <ScanLine size={16} />} 
+                {isOCRProcessing ? 'Lendo...' : 'OCR'}
+            </button>
+            <button onClick={handleCreateUser} className="w-full md:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all">
+                <UserPlus size={18}/> Novo
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+            <table className="w-full text-left">
+                <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 text-xs uppercase">
+                    <tr>
+                        <th className="p-5">Usuário</th>
+                        <th className="p-5">Unidade</th>
+                        <th className="p-5">Função</th>
+                        <th className="p-5">Status</th>
+                        <th className="p-5">Financeiro</th>
+                        <th className="p-5 text-right">Ações</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                    {paginatedUsers.map(user => (
+                        <tr key={user.id} className="hover:bg-slate-50 transition-colors group">
+                            <td className="p-5">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center overflow-hidden font-bold text-slate-500 border border-slate-300">
+                                        {user.avatarUrl ? <img src={user.avatarUrl} className="w-full h-full object-cover"/> : (user.name ? user.name.charAt(0) : 'U')}
+                                    </div>
+                                    <div>
+                                        <p className="font-bold text-slate-700 text-sm">{user.name}</p>
+                                        <p className="text-xs text-slate-400">{user.email || 'Sem e-mail'}</p>
+                                    </div>
+                                </div>
+                            </td>
+                            <td className="p-5 text-sm font-medium text-slate-600">{user.unit || '-'}</td>
+                            <td className="p-5"><span className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-bold border border-indigo-100">{user.role}</span></td>
+                            <td className="p-5">
+                                {user.active ? 
+                                    <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-600"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Ativo</span> : 
+                                    <span className="flex items-center gap-1.5 text-xs font-bold text-rose-500"><div className="w-2 h-2 rounded-full bg-rose-500"></div> Inativo</span>
+                                }
+                            </td>
+                            <td className="p-5">
+                                <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${user.financialStatus === 'OK' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : user.financialStatus === 'OVERDUE' ? 'bg-rose-50 text-rose-700 border-rose-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
+                                    {user.financialStatus === 'OK' ? 'Em dia' : user.financialStatus === 'OVERDUE' ? 'Inadimplente' : 'Pendente'}
+                                </span>
+                            </td>
+                            <td className="p-5 text-right">
+                                <div className="flex justify-end gap-2 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button onClick={() => handleEditUser(user)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors tooltip" title="Editar"><Edit2 size={16}/></button>
+                                </div>
+                            </td>
+                        </tr>
+                    ))}
+                    {paginatedUsers.length === 0 && (
+                        <tr><td colSpan={6} className="p-8 text-center text-slate-400">Nenhum usuário encontrado com os filtros atuais.</td></tr>
+                    )}
+                </tbody>
+            </table>
+        </div>
+        
+        {totalPages > 1 && (
+            <div className="p-4 border-t border-slate-100 flex justify-between items-center bg-slate-50">
+                <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-bold text-slate-600 hover:bg-white disabled:opacity-50 transition-colors">Anterior</button>
+                <span className="text-xs font-bold text-slate-500">Página {currentPage} de {totalPages}</span>
+                <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-bold text-slate-600 hover:bg-white disabled:opacity-50 transition-colors">Próxima</button>
+            </div>
+        )}
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -285,7 +447,11 @@ const UserManagement: React.FC<UserManagementProps> = ({ systemInfo, templates, 
                                     </select>
                                 </div>
                             </div>
-                            <div><label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Data de Admissão / Nascimento</label><input type="date" value={editingUser.admissionDate || ''} onChange={(e) => setEditingUser({...editingUser, admissionDate: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all placeholder-slate-400" /></div>
+                            <div className="grid grid-cols-2 gap-5">
+                                <div><label className="text-xs font-bold text-slate-500 uppercase mb-1 block">RG</label><input type="text" value={editingUser.rg || ''} onChange={(e) => setEditingUser({...editingUser, rg: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all placeholder-slate-400" placeholder="00.000.000-0"/></div>
+                                <div><label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Data de Nascimento</label><input type="date" value={editingUser.birthDate || ''} onChange={(e) => setEditingUser({...editingUser, birthDate: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all" /></div>
+                            </div>
+                            <div><label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Data de Admissão (Sistema)</label><input type="date" value={editingUser.admissionDate || ''} onChange={(e) => setEditingUser({...editingUser, admissionDate: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all placeholder-slate-400" /></div>
                         </div>
                     </div>
                 </div>

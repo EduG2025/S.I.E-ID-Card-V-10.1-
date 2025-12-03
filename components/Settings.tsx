@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { AVAILABLE_ROLES, SYSTEM_PERMISSIONS } from '../constants';
 import { SystemInfo, IdCardTemplate, CardElement, User, Permission, OfficialDocument } from '../types';
@@ -673,7 +674,7 @@ const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, tem
                                                 {el.type === 'text-dynamic' && (el.field === 'name' ? 'NOME DO USUÁRIO' : `{${el.field}}`)}
                                                 {el.type === 'text-static' && el.content}
                                                 {el.type === 'image' && (<div className="w-full h-full bg-slate-100 flex items-center justify-center overflow-hidden border border-slate-200">{el.field === 'system.logo' && systemInfo.logoUrl ? <img src={systemInfo.logoUrl} className="w-full h-full object-cover"/> : <ImageIcon size={16} className="text-slate-300"/>}</div>)}
-                                                {el.type === 'qrcode' && <div className="w-full h-full bg-black flex flex-col items-center justify-center text-white p-1"><div className="flex flex-wrap gap-0.5 justify-center">{Array.from({length: 16}).map((_, i) => (<div key={i} className={`w-1.5 h-1.5 ${Math.random() > 0.5 ? 'bg-white' : 'bg-black'}`}></div>))}</div></div>)}
+                                                {el.type === 'qrcode' && (<div className="w-full h-full bg-black flex flex-col items-center justify-center text-white p-1"><div className="flex flex-wrap gap-0.5 justify-center">{Array.from({length: 16}).map((_, i) => (<div key={i} className={`w-1.5 h-1.5 ${Math.random() > 0.5 ? 'bg-white' : 'bg-black'}`}></div>))}</div></div>)}
                                             </div>
                                         ))}
                                     </div>

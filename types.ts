@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 export enum UserRole {
@@ -91,6 +92,8 @@ export interface User {
   avatarUrl?: string;
   email?: string;
   cpfCnpj?: string;
+  rg?: string; // RG added
+  birthDate?: string; // BirthDate added
   phone?: string;
   address?: string;
   admissionDate?: string;
