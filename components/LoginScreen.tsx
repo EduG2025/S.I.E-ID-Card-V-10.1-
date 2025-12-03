@@ -1,7 +1,8 @@
+
 import React, { useState } from 'react';
 import { User, SystemInfo } from '../types';
 import { authService } from '../services/api';
-import { User as UserIcon, Lock, ArrowRight, AlertCircle, ArrowLeft, CheckCircle } from 'lucide-react';
+import { User as UserIcon, Lock, ArrowRight, AlertCircle, ArrowLeft, CheckCircle, Loader2 } from 'lucide-react';
 
 interface LoginScreenProps {
     onLoginSuccess: (user: User, token: string) => void;
@@ -28,32 +29,38 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, systemInfo })
         setError('');
         
         try {
-            // Simulation of API Call
-            // const response = await authService.login({ username: loginUser, password: loginPass });
-            // onLoginSuccess(response.data.user, response.data.token);
+            // Chamada Real à API
+            const response = await authService.login({ username: loginUser, password: loginPass });
             
-            // Mock Success for Production Template demo (Remove in real deploy)
-            setTimeout(() => {
-                if (loginUser === 'admin' && loginPass === '123') {
-                    onLoginSuccess({ 
-                        id: '1', name: 'Administrador', username: 'admin', role: 'ADMIN', active: true, profileCompletion: 100 
-                    } as User, 'mock-jwt-token');
-                } else {
-                    setError('Credenciais inválidas. (Demo: admin / 123)');
-                    setIsLoading(false);
-                }
-            }, 1000);
-
-        } catch (err) {
-            setError('Falha na autenticação. Verifique servidor.');
+            if (response.data && response.data.token) {
+                onLoginSuccess(response.data.user, response.data.token);
+            } else {
+                throw new Error("Resposta inválida do servidor");
+            }
+        } catch (err: any) {
+            console.error(err);
+            setError(err.response?.data?.message || 'Credenciais inválidas ou erro no servidor.');
             setIsLoading(false);
         }
     };
 
     const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault();
-        // authService.register(...)
-        setRegSuccess(true);
+        setIsLoading(true);
+        try {
+            await authService.register({
+                name: regName,
+                email: regEmail,
+                phone: regPhone,
+                password: regPass,
+                username: regEmail.split('@')[0] // Gera user a partir do email
+            });
+            setRegSuccess(true);
+            setIsLoading(false);
+        } catch (err: any) {
+            setError(err.response?.data?.message || 'Erro ao solicitar cadastro.');
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -69,7 +76,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, systemInfo })
                     <div className="w-20 h-20 bg-white/20 backdrop-blur-md rounded-2xl mx-auto flex items-center justify-center text-white shadow-lg mb-4 ring-1 ring-white/30">
                         {systemInfo.logoUrl ? <img src={systemInfo.logoUrl} className="w-full h-full object-contain"/> : <span className="font-bold text-3xl">S</span>}
                     </div>
-                    <h1 className="text-xl font-bold text-white uppercase tracking-tight">{systemInfo.name}</h1>
+                    <h1 className="text-xl font-bold text-white uppercase tracking-tight">{systemInfo.name || 'S.I.E Sistema'}</h1>
                     <p className="text-indigo-200 text-xs font-medium mt-1">Acesso Restrito</p>
                 </div>
 
@@ -85,11 +92,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, systemInfo })
                         ) : (
                             <form onSubmit={handleRegister} className="space-y-4">
                                 <h2 className="text-lg font-bold text-slate-800 mb-4 text-center">Solicitar Acesso</h2>
+                                {error && <div className="bg-rose-50 text-rose-600 p-3 rounded-lg text-xs font-bold text-center">{error}</div>}
                                 <input type="text" placeholder="Nome Completo" value={regName} onChange={e => setRegName(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500" required/>
                                 <input type="email" placeholder="E-mail" value={regEmail} onChange={e => setRegEmail(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500" required/>
                                 <input type="tel" placeholder="WhatsApp" value={regPhone} onChange={e => setRegPhone(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500" required/>
                                 <input type="password" placeholder="Senha" value={regPass} onChange={e => setRegPass(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500" required/>
-                                <button type="submit" className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all">Enviar</button>
+                                <button type="submit" disabled={isLoading} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all flex justify-center">
+                                    {isLoading ? <Loader2 className="animate-spin" size={20}/> : 'Enviar'}
+                                </button>
                                 <button type="button" onClick={() => setIsRegistering(false)} className="w-full py-2 text-slate-500 text-xs font-bold flex items-center justify-center gap-1"><ArrowLeft size={12}/> Voltar</button>
                             </form>
                         )
