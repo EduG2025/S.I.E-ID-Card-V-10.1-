@@ -93,7 +93,6 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/auth/register', async (req, res) => {
-    // Implementação básica de registro público (solicitação)
     const { name, email, phone, password, username } = req.body;
     try {
         const hash = await bcrypt.hash(password, 10);
@@ -223,6 +222,51 @@ app.get('/api/settings/templates', authenticateToken, async (req, res) => {
             elements: t.elements_json
         }));
         res.json(templates);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// --- OFFICIAL DOCUMENTS (CRUD) ---
+app.get('/api/documents', authenticateToken, async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM official_documents ORDER BY updated_at DESC');
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/documents', authenticateToken, async (req, res) => {
+    const d = req.body;
+    try {
+        const [result] = await pool.query(
+            `INSERT INTO official_documents (title, type, content, status) VALUES (?, ?, ?, ?)`,
+            [d.title, d.type, d.content, d.status]
+        );
+        res.json({ id: result.insertId, ...d });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/documents/:id', authenticateToken, async (req, res) => {
+    const d = req.body;
+    try {
+        await pool.query(
+            `UPDATE official_documents SET title=?, type=?, content=?, status=?, updated_at=NOW() WHERE id=?`,
+            [d.title, d.type, d.content, d.status, req.params.id]
+        );
+        res.json({ id: req.params.id, ...d });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/documents/:id', authenticateToken, async (req, res) => {
+    try {
+        await pool.query('DELETE FROM official_documents WHERE id = ?', [req.params.id]);
+        res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -373,7 +417,6 @@ app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => 
 app.post('/api/ai/analyze-doc', authenticateToken, upload.single('document'), async (req, res) => {
     if (!req.file || !process.env.GEMINI_API_KEY) return res.status(400).json({ error: 'Arquivo ou API Key faltando' });
     try {
-        // CORREÇÃO: Utilizando a sintaxe correta do Google GenAI SDK v1
         const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
         
         const fileData = fs.readFileSync(req.file.path).toString('base64');
@@ -390,12 +433,43 @@ app.post('/api/ai/analyze-doc', authenticateToken, upload.single('document'), as
             }
         });
         
-        const text = response.text; // Propriedade direta no novo SDK
+        const text = response.text; 
         const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim();
         res.json(JSON.parse(jsonStr));
     } catch (error) {
         console.error("AI Error", error);
         res.status(500).json({ error: 'Erro ao processar IA' });
+    }
+});
+
+// SECRETÁRIA ATIVA: Gerar Texto de Documento
+app.post('/api/ai/generate-document', authenticateToken, async (req, res) => {
+    const { prompt, referenceText } = req.body;
+    if (!process.env.GEMINI_API_KEY) return res.status(400).json({ error: 'API Key faltando' });
+
+    try {
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const systemInstruction = `Você é uma secretária administrativa experiente. 
+        Sua tarefa é redigir documentos oficiais (atas, ofícios, circulares) com linguagem formal e técnica.
+        Retorne EXCLUSIVAMENTE o conteúdo HTML (dentro de uma <div>) para ser inserido em um editor WYSIWYG.
+        Use tags como <b>, <br>, <u>, <ul>, <li>, <p>, <center>. NÃO use Markdown.
+        ${referenceText ? 'Baseie-se no seguinte estilo/conteúdo de referência: ' + referenceText : ''}`;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: {
+                role: 'user',
+                parts: [{ text: `Escreva um documento sobre: ${prompt}` }]
+            },
+            config: {
+                systemInstruction: systemInstruction
+            }
+        });
+
+        res.json({ text: response.text });
+    } catch (error) {
+        console.error("AI Gen Doc Error", error);
+        res.status(500).json({ error: 'Erro ao gerar documento' });
     }
 });
 

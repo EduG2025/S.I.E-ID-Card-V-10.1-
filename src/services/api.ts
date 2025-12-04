@@ -66,7 +66,8 @@ export const systemService = {
 export const aiService = {
   analyzeDocument: (formData: FormData) => api.post('/ai/analyze-doc', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
-  })
+  }),
+  generateDocument: (prompt: string, referenceText?: string) => api.post('/ai/generate-document', { prompt, referenceText })
 };
 
 export const operationsService = {
@@ -92,6 +93,13 @@ export const surveyService = {
 export const agendaService = {
     getAll: () => api.get('/agenda'),
     create: (data: any) => api.post('/agenda', data),
+};
+
+export const documentService = {
+    getAll: () => api.get('/documents'),
+    create: (data: any) => api.post('/documents', data),
+    update: (id: string, data: any) => api.put(`/documents/${id}`, data),
+    delete: (id: string) => api.delete(`/documents/${id}`)
 };
 
 export default api;
