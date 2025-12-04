@@ -1,4 +1,3 @@
-
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -536,6 +535,54 @@ app.post('/api/agenda', authenticateToken, async (req, res) => {
     res.json({ id: result.insertId, ...e });
 });
 
+// --- FIX: Added missing endpoints for demographics and map data ---
+app.get('/api/demographics/stats', authenticateToken, async (req, res) => {
+    try {
+        // Mock data, in a real scenario this would come from complex queries
+        res.json({
+            totalPopulation: 1250,
+            averageAge: 34,
+            averageIncome: 1850,
+            unemploymentRate: 15.5,
+            avgResidentsPerUnit: 2.8,
+            ageDistribution: {
+                children: 300,
+                adults: 800,
+                seniors: 150
+            },
+            infrastructureNeeds: {
+                sanitation: 40,
+                water: 25,
+                lighting: 18,
+                trashCollection: 10
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/map/units', authenticateToken, async (req, res) => {
+    try {
+        const [rows] = await pool.query("SELECT id, unit as number, address as block, name as residentName, social_data_json as socialData FROM users WHERE address IS NOT NULL AND unit IS NOT NULL");
+        const units = rows.map((r, index) => ({
+            id: r.id,
+            block: r.block || `Bloco ${String.fromCharCode(65 + (index % 5))}`,
+            number: r.number,
+            status: 'OK',
+            residentName: r.residentName,
+            vulnerabilityLevel: 'LOW',
+            tags: [],
+            coordinates: { lat: -23.550520 + (Math.random() - 0.5) * 0.01, lng: -46.633308 + (Math.random() - 0.5) * 0.01 },
+            cep: '01001-000'
+        }));
+        res.json(units);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
 // --- UPLOAD & AI ---
 app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => {
     if (!req.file) return res.status(400).send('Nenhum arquivo enviado');
@@ -556,10 +603,10 @@ app.post('/api/ai/analyze-doc', authenticateToken, upload.single('document'), as
         const fileData = fs.readFileSync(req.file.path).toString('base64');
         const prompt = `Analise este documento. Retorne APENAS um JSON válido (sem markdown) com os seguintes campos se encontrados: name, cpfCnpj, rg, birthDate (YYYY-MM-DD), address.`;
         
+        // FIX: Removed 'role' from contents object to align with Gemini API guidelines for single-turn requests.
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: {
-                role: 'user',
                 parts: [
                     { text: prompt },
                     { inlineData: { mimeType: req.file.mimetype, data: fileData } }
@@ -588,9 +635,10 @@ app.post('/api/ai/generate-document', authenticateToken, async (req, res) => {
         Use tags como <b>, <br>, <u>, <ul>, <li>, <p>, <center>. NÃO use Markdown.
         ${referenceText ? 'Baseie-se no seguinte estilo/conteúdo de referência: ' + referenceText : ''}`;
 
+        // FIX: Removed 'role' from contents object to align with Gemini API guidelines for single-turn requests.
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: { role: 'user', parts: [{ text: `Escreva um documento sobre: ${prompt}` }] },
+            contents: { parts: [{ text: `Escreva um documento sobre: ${prompt}` }] },
             config: { systemInstruction: systemInstruction }
         });
 

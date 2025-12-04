@@ -109,4 +109,13 @@ export const documentService = {
     delete: (id: string) => api.delete(`/documents/${id}`)
 };
 
+// FIX: Added missing mapService and demographicsService
+export const mapService = {
+    getUnits: () => api.get('/map/units'),
+};
+
+export const demographicsService = {
+    getStats: () => api.get('/demographics/stats'),
+};
+
 export default api;

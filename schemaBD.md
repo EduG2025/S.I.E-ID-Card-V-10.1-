@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS `users` (
   `address` TEXT,
   `avatar_url` TEXT,
   `admission_date` DATE,
+  `latitude` DECIMAL(10, 8),
+  `longitude` DECIMAL(11, 8),
   `active` BOOLEAN DEFAULT TRUE,
   `qr_code_data` VARCHAR(255) UNIQUE,
   `profile_completion` INT DEFAULT 0,
@@ -210,16 +212,15 @@ CREATE TABLE IF NOT EXISTS `official_documents` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;
-
 ```
 
 ## 2. DML (Data Manipulation Language) - Seeds Iniciais
 
 ```sql
--- Inserir Super Admin (Senha: 123)
--- NOTA: O hash é apenas um exemplo. O backend irá gerar um real no primeiro login ou cadastro.
-INSERT INTO `users` (`id`, `username`, `password_hash`, `role`, `name`, `email`, `active`)
-VALUES (1, 'admin', '$2a$10$f9bSgH5pL7eN2cR3iJ4k5O.zVnE6yX8uW0iT2jK7lM4pQ9oR8uD3e', 'ADMIN', 'ADMINISTRADOR', 'admin@sie.com', 1)
+-- Inserir Super Admin
+-- A senha '123' terá o hash gerado pelo backend no primeiro uso ou se o campo estiver vazio.
+INSERT INTO `users` (`id`, `username`, `password_hash`, `role`, `name`, `email`, `active`, `latitude`, `longitude`)
+VALUES (1, 'admin', '$2a$10$f9bSgH5pL7eN2cR3iJ4k5O.zVnE6yX8uW0iT2jK7lM4pQ9oR8uD3e', 'ADMIN', 'ADMINISTRADOR', 'admin@sie.com', 1, -22.6180, -43.7120)
 ON DUPLICATE KEY UPDATE name=VALUES(name);
 
 -- Inserir Configuração Inicial do Sistema
@@ -233,13 +234,4 @@ VALUES ('general_info', JSON_OBJECT(
     'registrationMode', 'APPROVAL'
 ))
 ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value);
-
--- Inserir Template Padrão de Carteirinha
-INSERT INTO `id_card_templates` (id, name, width, height, orientation, front_background, back_background, elements_json)
-VALUES (
-    'tpl_default_green', 
-    'Padrão Associação Verde', 
-    600, 375, 'landscape', '#ffffff', '#f3f4f6', 
-    '[{"id":"header_bg","type":"shape","label":"Fundo Cabeçalho","x":0,"y":0,"width":600,"height":80,"style":{"backgroundColor":"#15803d"},"layer":"front"}]'
-) ON DUPLICATE KEY UPDATE name=VALUES(name);
 ```

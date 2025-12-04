@@ -10,7 +10,7 @@
 ## 2. Backend & API
 - [x] **Conexão com Banco de Dados:** A API consegue se conectar ao MySQL usando as credenciais do `.env`.
 - [x] **Endpoints Completos:** Todas as rotas (`/api/*`) esperadas pelo frontend estão implementadas no `server.js`.
-- [x] **Autenticação (JWT):** Rotas protegidas retornam `401 Unauthorized` sem token válido.
+- [x] **Autenticação (JWT):** Rotas protegidas retornam `401 Unauthorized` sem token válido. Login não vaza informações sobre existência de usuários.
 - [x] **Upload de Arquivos:** A rota de upload (`/api/upload`) salva arquivos na pasta `uploads/` com permissões corretas.
 - [x] **Proxy de IA Seguro:** A chave do Google Gemini é usada apenas no backend, protegendo-a do navegador.
 - [x] **Gerenciador de Processos:** PM2 está configurado para reiniciar a API em caso de falha.

@@ -30,10 +30,15 @@ const checkConfig = (): void => {
             console.log(`✅ ${v} = ${obfuscated}`);
         }
     }
+    
+    if(process.env.JWT_SECRET && process.env.JWT_SECRET.length < 32) {
+        console.warn('⚠️  Aviso: Sua JWT_SECRET é muito curta. Recomenda-se uma string aleatória de 32+ caracteres para produção.');
+    }
 
     if (hasError) {
         console.error("\n⚠️ Configuração incompleta. O servidor não pode ser iniciado. Verifique seu arquivo .env");
-        process.exit(1);
+        // FIX: Cast process to any to bypass a potential TypeScript type definition issue where 'exit' is not found.
+        (process as any).exit(1);
     } else {
         console.log("\n🚀 Configuração validada com sucesso!");
     }
