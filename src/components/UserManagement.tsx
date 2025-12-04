@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo, memo } from 'react';
 import { AVAILABLE_ROLES } from '../constants';
 import { User, SystemInfo, IdCardTemplate, FinancialRecord, SocialQuestionnaireData } from '../types';
@@ -6,7 +7,7 @@ import {
   Save, Sparkles, Search, Edit2, Trash2, CreditCard, User as UserIcon, 
   Image as ImageIcon, X, Plus, Wallet, UploadCloud, FileText, Check, 
   Camera, Wand2, ScanLine, RotateCcw, UserPlus, FileCheck, Loader2, Phone, MapPin,
-  Calendar, Clock, FileDown, Heart, ArrowRight, Crop, Sun, Monitor
+  Calendar, Clock, FileDown, Heart, ArrowRight
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -96,7 +97,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ systemInfo, templates, 
       if (!editingUser) return;
       if (!editingUser.name) { alert('Nome é obrigatório.'); return; }
       try {
-          let savedUser;
+          let savedUser: User;
           if (editingUser.id && !editingUser.id.startsWith('temp_')) {
               const res = await userService.update(editingUser.id, editingUser);
               savedUser = res.data;

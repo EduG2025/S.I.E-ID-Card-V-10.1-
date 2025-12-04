@@ -1,3 +1,4 @@
+
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -461,17 +462,43 @@ app.post('/api/alerts', authenticateToken, async (req, res) => {
     res.json({ id: result.insertId, ...a });
 });
 
-// --- SURVEYS ---
+// --- SURVEYS & CENSUS ---
 app.get('/api/surveys', authenticateToken, async (req, res) => {
-    const [rows] = await pool.query('SELECT * FROM surveys ORDER BY created_at DESC');
-    const surveys = rows.map(s => ({
-        ...s,
-        startDate: s.start_date,
-        endDate: s.end_date,
-        externalAccess: !!s.external_access,
-        questions: s.questions_json
-    }));
-    res.json(surveys);
+    try {
+        const [surveys] = await pool.query('SELECT * FROM surveys ORDER BY created_at DESC');
+        
+        // Agregar respostas
+        const [responses] = await pool.query('SELECT survey_id, answers_json FROM survey_responses');
+        
+        const enrichedSurveys = surveys.map(s => {
+            const surveyResponses = responses.filter(r => r.survey_id === s.id);
+            const questionData = s.questions_json;
+            
+            // Simples agregação para gráfico (ex: primeira pergunta)
+            const aggregatedResults = {};
+            if (questionData && questionData.length > 0) {
+                const qId = questionData[0].id;
+                surveyResponses.forEach(r => {
+                    const ans = r.answers_json[qId];
+                    if (ans) aggregatedResults[ans] = (aggregatedResults[ans] || 0) + 1;
+                });
+            }
+
+            return {
+                ...s,
+                startDate: s.start_date,
+                endDate: s.end_date,
+                externalAccess: !!s.external_access,
+                questions: s.questions_json,
+                responseCount: surveyResponses.length,
+                results: aggregatedResults // Novo campo
+            };
+        });
+        
+        res.json(enrichedSurveys);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 app.post('/api/surveys', authenticateToken, async (req, res) => {
@@ -482,6 +509,16 @@ app.post('/api/surveys', authenticateToken, async (req, res) => {
         [id, s.title, s.description, s.type, s.status, s.startDate, s.endDate, s.externalAccess, JSON.stringify(s.questions)]
     );
     res.json({ ...s, id });
+});
+
+app.post('/api/surveys/:id/response', authenticateToken, async (req, res) => {
+    const surveyId = req.params.id;
+    const { answers } = req.body;
+    await pool.query(
+        `INSERT INTO survey_responses (survey_id, user_id, answers_json) VALUES (?, ?, ?)`,
+        [surveyId, req.user.id, JSON.stringify(answers)]
+    );
+    res.json({ success: true });
 });
 
 // --- AGENDA ---

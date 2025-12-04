@@ -1,45 +1,3 @@
-
-// ... imports
-
-const UserManagement: React.FC<UserManagementProps> = ({ systemInfo, templates, transactions, onUpdateTransactions }) => {
-  // ... (previous state)
-
-  // FIX: Conectar ao Backend para Lançamento Manual
-  const handleCreateManualEntry = async () => {
-      if (!editingUser || !manualEntry.amount || !manualEntry.description) return;
-      
-      try {
-          const payload = {
-              description: manualEntry.description,
-              amount: Number(manualEntry.amount),
-              type: manualEntry.type,
-              status: manualEntry.status,
-              date: manualEntry.date || new Date().toISOString(),
-              category: manualEntry.category || 'Geral',
-              userId: editingUser.id,
-              dueDate: manualEntry.date // Vencimento igual data para simplificar
-          };
-
-          const res = await financialService.create(payload);
-          onUpdateTransactions([res.data, ...transactions]);
-          
-          setIsFinancialModalOpen(false);
-          setManualEntry({ type: 'INCOME', status: 'PENDING', description: '', amount: 0, category: 'Mensalidade' });
-          alert('Lançamento salvo com sucesso!');
-      } catch (error) {
-          console.error(error);
-          alert('Erro ao salvar lançamento manual.');
-      }
-  };
-
-  // ... (restante do componente permanece igual, apenas substituindo a função acima)
-  
-  // (O resto do arquivo é mantido idêntico ao anterior para poupar espaço na resposta, focando na correção da função)
-  
-  // Re-exportando o componente inteiro para garantir integridade se necessário, 
-  // mas aqui focamos na correção da lógica interna. 
-  // Vou retornar o componente completo atualizado.
-
 import React, { useState, useRef, useEffect, useMemo, memo } from 'react';
 import { AVAILABLE_ROLES } from '../constants';
 import { User, SystemInfo, IdCardTemplate, FinancialRecord, SocialQuestionnaireData } from '../types';
@@ -48,7 +6,7 @@ import {
   Save, Sparkles, Search, Edit2, Trash2, CreditCard, User as UserIcon, 
   Image as ImageIcon, X, Plus, Wallet, UploadCloud, FileText, Check, 
   Camera, Wand2, ScanLine, RotateCcw, UserPlus, FileCheck, Loader2, Phone, MapPin,
-  Calendar, Clock, FileDown, Heart, ArrowRight, Crop, Sun, Monitor
+  Calendar, Clock, FileDown, Heart, ArrowRight
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -100,15 +58,11 @@ const UserManagement: React.FC<UserManagementProps> = ({ systemInfo, templates, 
   const [activeTab, setActiveTab] = useState<'PERSONAL' | 'CONTACT' | 'DOCS' | 'FINANCE' | 'CARD' | 'SOCIAL'>('PERSONAL');
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
   const [isOCRProcessing, setIsOCRProcessing] = useState(false);
-  const [extractedData, setExtractedData] = useState<Partial<User> | null>(null);
   const [newDocName, setNewDocName] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isAnalyzingDoc, setIsAnalyzingDoc] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const [showPhotoEditor, setShowPhotoEditor] = useState(false);
   const [tempPhotoUrl, setTempPhotoUrl] = useState<string | null>(null);
-  const [isProcessingBg, setIsProcessingBg] = useState(false);
-  const [aiPrompt, setAiPrompt] = useState('');
   const [photoFilters, setPhotoFilters] = useState({ brightness: 100, contrast: 100, grayscale: 0, bg: 'transparent', zoom: 1 });
   const [isExporting, setIsExporting] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0]?.id || '');
@@ -118,7 +72,6 @@ const UserManagement: React.FC<UserManagementProps> = ({ systemInfo, templates, 
 
   const ocrInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const exportFrontRef = useRef<HTMLDivElement>(null);
@@ -291,7 +244,6 @@ const UserManagement: React.FC<UserManagementProps> = ({ systemInfo, templates, 
         return editingUser ? transactions.filter(t => String(t.userId) === String(editingUser.id)) : [];
   }, [editingUser, transactions]);
 
-  // Handle Download Logic (Simulated)
   const handleDownloadJPG = async (side: 'front' | 'back') => {
       const ref = side === 'front' ? exportFrontRef.current : exportBackRef.current;
       if (!ref) return;

@@ -1,7 +1,6 @@
 import axios from 'axios';
 
 // Configuração base do Axios
-// Em produção, a URL base é relativa (o Nginx faz o proxy para o backend)
 const api = axios.create({
   baseURL: '/api',
   headers: {
@@ -66,6 +65,7 @@ export const systemService = {
   getInfo: () => api.get('/settings/system'),
   updateInfo: (data: any) => api.put('/settings/system', data),
   getTemplates: () => api.get('/settings/templates'),
+  saveTemplates: (templates: any[]) => api.put('/settings/templates', templates)
 };
 
 export const aiService = {
@@ -93,6 +93,8 @@ export const communicationService = {
 export const surveyService = {
     getAll: () => api.get('/surveys'),
     create: (data: any) => api.post('/surveys', data),
+    getResults: (id: string) => api.get(`/surveys/${id}/results`),
+    submitResponse: (surveyId: string, answers: any) => api.post(`/surveys/${surveyId}/response`, { answers })
 };
 
 export const agendaService = {
