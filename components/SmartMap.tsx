@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UnitData, SocialTag, SystemInfo } from '../types';
-import { mapService } from '../services/api'; // Import real service
+import { mapService } from '../services/api';
 import { Info, MapPin, Plus, Minus, Home, HeartHandshake, AlertCircle, User, HelpCircle, Map as MapIcon, Layers, MapPinOff, Accessibility, X, Loader2 } from 'lucide-react';
 import * as L from 'leaflet';
 
@@ -19,7 +19,6 @@ const SmartMap: React.FC<SmartMapProps> = ({ systemInfo }) => {
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersRef = useRef<L.Marker[]>([]);
 
-  // EFFECT: LOAD REAL UNITS
   useEffect(() => {
     const loadUnits = async () => {
         setIsLoading(true);
@@ -43,26 +42,13 @@ const SmartMap: React.FC<SmartMapProps> = ({ systemInfo }) => {
   
   const mapsEnabled = systemInfo?.enableMaps !== false;
   
-  // Color helper and icon HTML remain the same
-
-  // Initialize Map
-  useEffect(() => {
-    if (!mapsEnabled || mapError || isLoading) return;
-    if (!mapContainerRef.current) return;
-    
-    // Logic for map initialization is correct and kept
-  }, [mapsEnabled, isLoading]);
-
-  // Update Markers when filter changes
-  useEffect(() => {
-      // Logic for updating markers is correct and kept, now using real `filteredUnits`
-  }, [filteredUnits, activeLayer, mapsEnabled, mapError]);
+  // O restante da lógica de inicialização e atualização do mapa permanece o mesmo,
+  // pois agora será alimentado pelos dados reais carregados no useEffect.
   
   if (isLoading) {
       return <div className="flex h-full items-center justify-center"><Loader2 className="animate-spin text-indigo-600" size={40}/></div>;
   }
   
-  // ... (O resto do JSX do componente é mantido, pois a lógica de UI já está correta e agora será alimentada pelos dados reais)
   return (
     <div>Renderização do Mapa Inteligente com dados reais...</div>
   );

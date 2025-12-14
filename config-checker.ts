@@ -3,6 +3,7 @@
 // Certifique-se de ter `ts-node` instalado: npm install -g ts-node
 
 import dotenv from 'dotenv';
+import fs from 'fs';
 
 dotenv.config();
 
@@ -19,6 +20,11 @@ const checkConfig = (): void => {
     console.log("🔍 Verificando variáveis de ambiente...");
     let hasError = false;
 
+    // Verificar se .env.example existe
+    if (!fs.existsSync('.env.example')) {
+        console.warn('⚠️  Aviso: Arquivo ".env.example" não encontrado. É recomendado criar um para guiar a configuração.');
+    }
+
     for (const v of requiredEnvVars) {
         if (!process.env[v]) {
             console.error(`❌ Erro Crítico: Variável de ambiente "${v}" não está definida no arquivo .env`);
@@ -32,11 +38,12 @@ const checkConfig = (): void => {
     }
     
     if(process.env.JWT_SECRET && process.env.JWT_SECRET.length < 32) {
-        console.warn('⚠️  Aviso: Sua JWT_SECRET é muito curta. Recomenda-se uma string aleatória de 32+ caracteres para produção.');
+        console.error('❌ Erro Crítico: Sua JWT_SECRET é muito curta. Use uma string aleatória de 32+ caracteres para produção.');
+        hasError = true;
     }
 
     if (hasError) {
-        console.error("\n⚠️ Configuração incompleta. O servidor não pode ser iniciado. Verifique seu arquivo .env");
+        console.error("\n⚠️ Configuração incompleta ou insegura. O servidor não pode ser iniciado. Verifique seu arquivo .env");
         // FIX: Cast process to any to bypass a potential TypeScript type definition issue where 'exit' is not found.
         (process as any).exit(1);
     } else {

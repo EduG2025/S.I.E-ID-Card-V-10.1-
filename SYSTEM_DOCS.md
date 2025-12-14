@@ -18,6 +18,7 @@ O frontend (rodando no navegador do usuário) nunca se comunica diretamente com 
 ├── src/
 │   ├── components/     # Componentes React (Módulos da aplicação)
 │   ├── services/       # api.ts (Funções para chamar o backend)
+│   ├── config/         # database.js (Configuração da conexão com o banco)
 │   ├── types.ts        # Definições de tipo (interfaces TypeScript)
 │   ├── App.tsx         # Componente raiz, roteamento e layout
 │   └── index.tsx       # Ponto de entrada do React
@@ -46,8 +47,8 @@ A API é servida a partir do prefixo `/api`. Todas as rotas (exceto `/auth/login
 | GET, POST | `/api/reservations`, `/api/incidents`, `/api/visitors`| Rotas CRUD para o Módulo Operacional. |
 | GET, POST | `/api/notices`, `/api/alerts` | Rotas CRUD para o Módulo de Comunicação. |
 | GET, POST | `/api/surveys`, `/api/surveys/:id/response`| Rotas CRUD para Pesquisas e Censo. |
-| GET | `/api/demographics` | Retorna dados demográficos agregados. |
-| GET | `/api/map/units` | Retorna dados geolocalizados para o mapa. |
+| GET | `/api/demographics/stats` | **Novo:** Retorna dados demográficos agregados. |
+| GET | `/api/map/units` | **Novo:** Retorna dados geolocalizados para o mapa. |
 | GET, POST | `/api/agenda` | Rotas CRUD para a Agenda/Timeline. |
 | GET, PUT | `/api/settings/system` | Gerencia informações globais da associação. |
 | GET, PUT | `/api/settings/templates` | Gerencia os templates de carteirinha do Studio IA. |

@@ -1,4 +1,4 @@
-# S.I.E - Schema do Banco de Dados (MySQL - Final)
+# S.I.E - Schema do Banco de Dados (MySQL - Final e Unificado)
 
 Execute este script completo no seu servidor MySQL para criar a estrutura final e validada da aplicação.
 
@@ -214,11 +214,10 @@ CREATE TABLE IF NOT EXISTS `official_documents` (
 SET FOREIGN_KEY_CHECKS = 1;
 ```
 
-## 2. DML (Data Manipulation Language) - Seeds Iniciais
+## 2. DML (Data Manipulation Language) - Seeds Iniciais (Apenas Admin)
 
 ```sql
--- Inserir Super Admin
--- A senha '123' terá o hash gerado pelo backend no primeiro uso ou se o campo estiver vazio.
+-- Inserir Super Admin (a senha deve ser gerada via hash no backend)
 INSERT INTO `users` (`id`, `username`, `password_hash`, `role`, `name`, `email`, `active`, `latitude`, `longitude`)
 VALUES (1, 'admin', '$2a$10$f9bSgH5pL7eN2cR3iJ4k5O.zVnE6yX8uW0iT2jK7lM4pQ9oR8uD3e', 'ADMIN', 'ADMINISTRADOR', 'admin@sie.com', 1, -22.6180, -43.7120)
 ON DUPLICATE KEY UPDATE name=VALUES(name);
