@@ -1,3 +1,4 @@
+
 // Este script deve ser executado antes de iniciar o servidor para validar a configuração.
 // Use: node --loader ts-node/esm config-checker.ts
 // Certifique-se de ter `ts-node` instalado: npm install -g ts-node
@@ -44,7 +45,7 @@ const checkConfig = (): void => {
 
     if (hasError) {
         console.error("\n⚠️ Configuração incompleta ou insegura. O servidor não pode ser iniciado. Verifique seu arquivo .env");
-        // FIX: Cast process to any to bypass a potential TypeScript type definition issue where 'exit' is not found.
+        /** FIX: Cast process to any to bypass the 'exit' property missing on type 'Process' in some environments */
         (process as any).exit(1);
     } else {
         console.log("\n🚀 Configuração validada com sucesso!");

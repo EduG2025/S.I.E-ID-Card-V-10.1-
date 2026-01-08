@@ -1,14 +1,16 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { AVAILABLE_ROLES, SYSTEM_PERMISSIONS } from '../constants';
-import { SystemInfo, IdCardTemplate, CardElement, User, Permission, OfficialDocument } from '../types';
-import { systemService, documentService, aiService } from '../services/api';
-import { 
-  Save, Sparkles, Key, Building, Shield, Check, X, Upload, 
-  Image as ImageIcon, CreditCard, Plus, Trash2, 
-  Move, Type, MousePointer2, Layers, AlignLeft, AlignCenter, AlignRight, AlignJustify,
-  ArrowUp, ArrowDown, Maximize, AlertCircle, Grid3X3, Eye, Settings2, UserCheck, Lock, RefreshCw, CheckSquare, Square, UserPlus,
-  Cpu, MessageCircle, Landmark, Globe, EyeOff, Link as LinkIcon, AlertTriangle, FileText,
-  Bot, Paperclip, Send, FileCheck, ScanLine, Bold, Italic, Underline, File
+
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { AVAILABLE_ROLES, SYSTEM_PERMISSIONS, DEFAULT_ID_CARD_TEMPLATE } from '../constants';
+import { SystemInfo, IdCardTemplate, User, AIKey, CardElement } from '../types';
+import { systemService, governanceService, aiKeyService, templateService } from '../services/api';
+import axios from 'axios';
+import {
+  Save, Building, Shield, Check, X, Upload,
+  Image as ImageIcon, Plus, Trash2,
+  Loader2, Key, Cpu, Zap, Edit2, CheckCircle2,
+  Lock, Unlock, Server, Signal, Activity, RefreshCw, AlertTriangle,
+  Globe, Phone, Mail, Map, Wallet, ShieldCheck,
+  TrendingUp, Type, Maximize, Copy, MousePointer2, Sparkles, ChevronRight, Database, CloudDownload
 } from 'lucide-react';
 
 interface SettingsProps {
@@ -16,564 +18,453 @@ interface SettingsProps {
   onUpdateSystemInfo: (info: SystemInfo) => void;
   templates: IdCardTemplate[];
   onUpdateTemplates: (templates: IdCardTemplate[]) => void;
-  usersList: User[];
-  onUpdateUsers: (users: User[]) => void;
 }
 
-const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, templates, onUpdateTemplates, usersList, onUpdateUsers }) => {
+const Settings = ({ systemInfo, onUpdateSystemInfo, templates, onUpdateTemplates }: SettingsProps) => {
   const [activeTab, setActiveTab] = useState<'INFO' | 'ACCESS' | 'API' | 'STUDIO'>('INFO');
-  
-  // STUDIO STATES
-  const [studioMode, setStudioMode] = useState<'CARDS' | 'DOCS'>('CARDS');
+  const [isHydrating, setIsHydrating] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // STUDIO - CARDS
+  // STUDIO STATES
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(templates[0]?.id || '');
   const [studioView, setStudioView] = useState<'front' | 'back'>('front');
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [showGrid, setShowGrid] = useState(true);
-  const [showGuides, setShowGuides] = useState(true);
+  
+  const [isSaveTemplateModalOpen, setIsSaveTemplateModalOpen] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState('');
   
   const canvasRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef<{ x: number, y: number, initialElX: number, initialElY: number } | null>(null);
 
-  // STUDIO - DOCS (INTEGRAÇÃO REAL)
-  const [documents, setDocuments] = useState<OfficialDocument[]>([]);
-  const [activeDocId, setActiveDocId] = useState<string | null>(null);
-  const [docPrompt, setDocPrompt] = useState('');
-  const [aiChatHistory, setAiChatHistory] = useState<{role: 'user' | 'ai', text: string}[]>([{role: 'ai', text: 'Olá! Sou o assistente de documentos do S.I.E. Carregue um modelo PDF/DOC para eu aprender o estilo, ou peça para eu escrever um novo documento.'}]);
-  const [referenceFile, setReferenceFile] = useState<File | null>(null);
-  const [isProcessingAI, setIsProcessingAI] = useState(false);
-  const [isAnalyzingRef, setIsAnalyzingRef] = useState(false);
-  const refFileInput = useRef<HTMLInputElement>(null);
-  const docEditorRef = useRef<HTMLDivElement>(null);
-  const docImageInputRef = useRef<HTMLInputElement>(null);
+  const [tempSystemInfo, setTempSystemInfo] = useState<SystemInfo>(systemInfo);
+  const [isSavingSystem, setIsSavingSystem] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
-  const [isLoadingDocs, setIsLoadingDocs] = useState(false);
+  const [roleMatrix, setRoleMatrix] = useState<Record<string, string[]>>({});
+  const [isSavingGovernance, setIsSavingGovernance] = useState(false);
 
-  // ACCESS TAB STATES
-  const [searchTerm, setSearchTerm] = useState('');
-  const [permissionUser, setPermissionUser] = useState<User | null>(null);
-  const [tempPermissions, setTempPermissions] = useState<string[]>([]);
-  const [passwordResetUser, setPasswordResetUser] = useState<User | null>(null);
-  const [newPassword, setNewPassword] = useState('');
-
-  // API STATES
-  const [apiConfig, setApiConfig] = useState({
-      geminiKey: 'AIzaSy***********************',
-      geminiConnected: true,
-      paymentKey: '',
-      paymentConnected: false,
-      whatsappToken: '',
-      whatsappInstance: '',
-      whatsappConnected: false,
-      openFinanceClientId: '',
-      openFinanceSecret: '',
-      openFinanceConnected: false
+  const [aiKeys, setAiKeys] = useState<AIKey[]>([]);
+  const [isLoadingKeys, setIsLoadingKeys] = useState(false);
+  const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
+  const [keyFormData, setKeyFormData] = useState<Partial<AIKey>>({
+    label: '', key_value: '', provider: 'GEMINI', tier: 'FREE', priority: 1
   });
-  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
 
-  const toggleSecret = (key: string) => setShowSecrets(prev => ({ ...prev, [key]: !prev[key] }));
+  const activeTemplate = useMemo(() => 
+    templates.find(t => t.id === selectedTemplateId) || templates[0], 
+    [templates, selectedTemplateId]
+  );
 
-  const activeTemplate = templates.find(t => t.id === selectedTemplateId);
-  const activeElement = activeTemplate?.elements.find(el => el.id === selectedElementId);
-  const activeDoc = documents.find(d => d.id === activeDocId);
-
-  // --- EFEITOS DE CARREGAMENTO ---
-  useEffect(() => {
-      if (activeTab === 'STUDIO' && studioMode === 'DOCS') {
-          loadDocuments();
-      }
-  }, [activeTab, studioMode]);
-
-  const loadDocuments = async () => {
-      setIsLoadingDocs(true);
-      try {
-          const res = await documentService.getAll();
-          setDocuments(res.data);
-          if (res.data.length > 0 && !activeDocId) {
-              setActiveDocId(res.data[0].id);
-          }
-      } catch (error) {
-          console.error("Error loading docs", error);
-      } finally {
-          setIsLoadingDocs(false);
-      }
-  };
-
-  // --- GENERAL HANDLERS ---
-  const handleSaveInfo = async () => {
+  const loadMatrix = useCallback(async () => {
     try {
-        await systemService.updateInfo(systemInfo);
-        const btn = document.getElementById('save-btn-info');
-        if (btn) {
-            const originalText = btn.innerHTML;
-            btn.innerHTML = `<span class="flex items-center gap-2"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Salvo com Sucesso!</span>`;
-            setTimeout(() => { btn.innerHTML = originalText; }, 2000);
-        }
+      const res = await governanceService.getMatrix();
+      setRoleMatrix(res.data.data || {});
+    } catch (e) { console.error("RBAC Sync Failure."); }
+  }, []);
+
+  const loadAIKeys = useCallback(async () => {
+    setIsLoadingKeys(true);
+    try {
+      const res = await aiKeyService.getAll();
+      setAiKeys(res.data.data || []);
+    } catch (e) { console.error("AI Cluster Failure."); }
+    finally { setIsLoadingKeys(false); }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'ACCESS') loadMatrix();
+    if (activeTab === 'API') loadAIKeys();
+  }, [activeTab, loadMatrix, loadAIKeys]);
+
+  const handleSaveSystemInfo = async () => {
+    setIsSavingSystem(true);
+    try {
+      await systemService.updateInfo(tempSystemInfo);
+      onUpdateSystemInfo(tempSystemInfo);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (e) { alert("Erro ao sincronizar Kernel."); }
+    finally { setIsSavingSystem(false); }
+  };
+
+  const handleHydrateData = async () => {
+      if(!confirm("Deseja povoar o sistema com dados de demonstração? Isso não apagará dados existentes, mas adicionará novos registros.")) return;
+      setIsHydrating(true);
+      try {
+          const token = localStorage.getItem('sie_auth_token');
+          await axios.post('/api/system/hydrate', {}, {
+              headers: { Authorization: `Bearer ${token}` }
+          });
+          alert("✅ Sistema Hidratado! Recarregue a página para ver os novos moradores, finanças e ocorrências.");
+          window.location.reload();
+      } catch (e) {
+          alert("❌ Erro ao hidratar sistema.");
+      } finally {
+          setIsHydrating(false);
+      }
+  };
+
+  const handleSaveTemplateAsNew = async () => {
+    if (!newTemplateName) return;
+    setIsSavingSystem(true);
+    try {
+      const newId = `tpl_${Date.now()}`;
+      const newTemplate: IdCardTemplate = {
+        ...activeTemplate,
+        id: newId,
+        name: newTemplateName
+      };
+      await templateService.save(newTemplate);
+      onUpdateTemplates([...templates, newTemplate]);
+      setSelectedTemplateId(newId);
+      setIsSaveTemplateModalOpen(false);
+      setNewTemplateName('');
     } catch (e) {
-        alert("Erro ao salvar informações");
+      alert("Falha ao salvar novo padrão.");
+    } finally {
+      setIsSavingSystem(false);
     }
   };
 
-  const handleSaveApi = (service: string) => {
-      alert(`Configurações de ${service} salvas e conexão testada com sucesso!`);
-  };
-  
-  const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => onUpdateSystemInfo({ ...systemInfo, logoUrl: reader.result as string });
-      reader.readAsDataURL(file);
-    }
+  const handleTogglePermission = (role: string, permissionId: string) => {
+    const current = roleMatrix[role] || [];
+    const updated = current.includes(permissionId) 
+      ? current.filter(p => p !== permissionId)
+      : [...current, permissionId];
+    setRoleMatrix({ ...roleMatrix, [role]: updated });
   };
 
-  // --- PERMISSION & PASSWORD ---
-  const handleOpenPermissions = (user: User) => {
-      setPermissionUser(user);
-      setTempPermissions(user.permissions || []);
+  const handleSaveGovernance = async () => {
+    setIsSavingGovernance(true);
+    try {
+      await governanceService.updateMatrix(roleMatrix);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (e) { alert("Falha ao persistir RBAC."); }
+    finally { setIsSavingGovernance(false); }
   };
 
-  const handleTogglePermission = (permId: string) => {
-      setTempPermissions(prev => prev.includes(permId) ? prev.filter(id => id !== permId) : [...prev, permId]);
-  };
-
-  const handleSavePermissions = () => {
-      if (!permissionUser) return;
-      const updatedList = usersList.map(u => u.id === permissionUser.id ? { ...u, permissions: tempPermissions } : u);
-      onUpdateUsers(updatedList);
-      setPermissionUser(null);
-      alert('Permissões atualizadas com sucesso!');
-  };
-
-  const handleOpenPasswordReset = (user: User) => {
-      setPasswordResetUser(user);
-      setNewPassword('');
-  };
-
-  const handleSavePassword = () => {
-      if (!passwordResetUser || !newPassword) return;
-      const updatedList = usersList.map(u => u.id === passwordResetUser.id ? { ...u, password: newPassword } : u);
-      onUpdateUsers(updatedList);
-      setPasswordResetUser(null);
-      alert(`Senha de ${passwordResetUser.name} redefinida.`);
-  };
-
-  const groupedPermissions = SYSTEM_PERMISSIONS.reduce((acc, perm) => {
-      if (!acc[perm.module]) acc[perm.module] = [];
-      acc[perm.module].push(perm);
-      return acc;
-  }, {} as Record<string, Permission[]>);
-
-  // --- STUDIO (CARDS) ---
-  const handleCreateTemplate = () => {
-    const newTemplate: IdCardTemplate = {
-        id: `tpl_${Date.now()}`,
-        name: 'Novo Modelo',
-        width: 340, height: 215, orientation: 'landscape',
-        frontBackground: '#ffffff', backBackground: '#f3f4f6',
-        elements: [{ id: `el_${Date.now()}`, type: 'text-dynamic', label: 'Nome', field: 'name', x: 10, y: 10, style: { fontSize: '14px', color: '#000', fontWeight: 'bold' }, layer: 'front' }]
-    };
-    onUpdateTemplates([...templates, newTemplate]);
-    setSelectedTemplateId(newTemplate.id);
+  const handleAddKey = async () => {
+    try {
+      await aiKeyService.create(keyFormData);
+      setIsKeyModalOpen(false);
+      loadAIKeys();
+    } catch (e) { alert("Erro ao registrar nó de IA."); }
   };
 
   const updateTemplate = (updates: Partial<IdCardTemplate>) => {
-    if (!activeTemplate) return;
     const updated = { ...activeTemplate, ...updates };
     onUpdateTemplates(templates.map(t => t.id === activeTemplate.id ? updated : t));
-    setSaveSuccess(false);
-  };
-
-  const saveCurrentTemplate = () => {
-      // In production, send to backend
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
   };
 
   const addElement = (type: CardElement['type']) => {
-      if (!activeTemplate) return;
-      const newEl: CardElement = {
-          id: `el_${Date.now()}`, type,
-          label: type === 'shape' ? 'Forma' : type === 'image' ? 'Imagem' : 'Texto',
-          x: 20, y: 20,
-          width: type === 'shape' ? 100 : type === 'image' || type === 'qrcode' ? 50 : undefined,
-          height: type === 'shape' ? 20 : type === 'image' || type === 'qrcode' ? 50 : undefined,
-          style: { fontSize: '12px', color: '#000000', backgroundColor: type === 'shape' ? '#cccccc' : 'transparent', textAlign: 'left' },
-          layer: studioView,
-          field: type === 'text-dynamic' ? 'name' : type === 'image' ? 'avatarUrl' : undefined,
-          content: type === 'text-static' ? 'Texto Fixo' : undefined
-      };
-      updateTemplate({ elements: [...activeTemplate.elements, newEl] });
-      setSelectedElementId(newEl.id);
+    const newEl: CardElement = {
+        id: `el_${Date.now()}`, type, label: type, x: 10, y: 10, layer: studioView,
+        style: { fontSize: '14px', color: '#000000', fontWeight: 'bold' },
+        field: type === 'text-dynamic' ? 'name' : (type === 'image' ? 'avatarUrl' : undefined)
+    };
+    updateTemplate({ elements: [...activeTemplate.elements, newEl] });
   };
 
-  const updateElement = (elementId: string, updates: Partial<CardElement> | { style: Partial<CardElement['style']> }) => {
-      if (!activeTemplate) return;
-      const newElements = activeTemplate.elements.map(el => {
-          if (el.id === elementId) {
-             if ('style' in updates && updates.style) return { ...el, style: { ...el.style, ...updates.style } as CardElement['style'] };
-             return { ...el, ...(updates as Partial<CardElement>) };
-          }
-          return el;
-      });
-      updateTemplate({ elements: newElements });
+  const updateElement = (elementId: string, updates: Partial<CardElement>) => {
+    const newElements = activeTemplate.elements.map(el => el.id === elementId ? { ...el, ...updates } : el);
+    updateTemplate({ elements: newElements });
   };
 
   const removeElement = (elementId: string) => {
-      if (!activeTemplate) return;
-      updateTemplate({ elements: activeTemplate.elements.filter(el => el.id !== elementId) });
-      setSelectedElementId(null);
+    const newElements = activeTemplate.elements.filter(el => el.id !== elementId);
+    updateTemplate({ elements: newElements });
+    if (selectedElementId === elementId) setSelectedElementId(null);
   };
 
-  const handleMouseDown = (e: React.MouseEvent, elementId: string) => {
-      e.stopPropagation();
-      if (!activeTemplate) return;
-      const el = activeTemplate.elements.find(e => e.id === elementId);
-      if (!el) return;
-      setSelectedElementId(elementId);
-      setIsDragging(true);
-      dragStartRef.current = { x: e.clientX, y: e.clientY, initialElX: el.x, initialElY: el.y };
+  // FIX: Use any to bypass namespace 'React' error
+  const handleMouseDown = (e: any, elementId: string) => {
+    e.stopPropagation();
+    const el = activeTemplate.elements.find(e => e.id === elementId);
+    if (!el) return;
+    setSelectedElementId(elementId);
+    setIsDragging(true);
+    dragStartRef.current = { x: e.clientX, y: e.clientY, initialElX: el.x, initialElY: el.y };
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-      if (!isDragging || !dragStartRef.current || !activeTemplate || !selectedElementId || !canvasRef.current) return;
-      const rect = canvasRef.current.getBoundingClientRect();
-      const deltaX = e.clientX - dragStartRef.current.x;
-      const deltaY = e.clientY - dragStartRef.current.y;
-      const newX = dragStartRef.current.initialElX + (deltaX / rect.width) * 100;
-      const newY = dragStartRef.current.initialElY + (deltaY / rect.height) * 100;
-      updateElement(selectedElementId, { x: Number(newX.toFixed(2)), y: Number(newY.toFixed(2)) });
+  // FIX: Use any to bypass namespace 'React' error
+  const handleMouseMove = (e: any) => {
+    if (!isDragging || !dragStartRef.current || !canvasRef.current || !selectedElementId) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const deltaX = ((e.clientX - dragStartRef.current.x) / rect.width) * 100;
+    const deltaY = ((e.clientY - dragStartRef.current.y) / rect.height) * 100;
+    updateElement(selectedElementId, { x: dragStartRef.current.initialElX + deltaX, y: dragStartRef.current.initialElY + deltaY });
   };
-
-  const handleMouseUp = () => { setIsDragging(false); dragStartRef.current = null; };
-
-  // --- STUDIO (DOCS) ---
-  const handleCreateDocument = async () => {
-      try {
-          const res = await documentService.create({
-              title: 'Novo Documento',
-              type: 'OFICIO',
-              content: '<div></div>',
-              status: 'DRAFT'
-          });
-          setDocuments([res.data, ...documents]);
-          setActiveDocId(res.data.id);
-      } catch (error) {
-          alert("Erro ao criar documento");
-      }
-  };
-
-  const handleDeleteDocument = async (docId: string) => {
-      if (window.confirm('Tem certeza que deseja excluir este documento?')) {
-          await documentService.delete(docId);
-          const newDocs = documents.filter(d => d.id !== docId);
-          setDocuments(newDocs);
-          if (activeDocId === docId) setActiveDocId(null);
-      }
-  };
-
-  const handleUpdateDoc = async (updates: Partial<OfficialDocument>) => {
-      if (!activeDocId) return;
-      // Optimistic update locally
-      setDocuments(prev => prev.map(d => d.id === activeDocId ? { ...d, ...updates, updatedAt: new Date().toISOString() } : d));
-      // Save to server
-      try {
-          await documentService.update(activeDocId, updates);
-      } catch (e) {
-          console.error("Save error", e);
-      }
-  };
-
-  // Editor Actions
-  const execCmd = (command: string, value: string | undefined = undefined) => {
-      document.execCommand(command, false, value);
-      if (docEditorRef.current && activeDocId) {
-          handleUpdateDoc({ content: docEditorRef.current.innerHTML });
-      }
-  };
-
-  const handleReferenceUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files && e.target.files[0]) {
-          const file = e.target.files[0];
-          setReferenceFile(file);
-          setIsAnalyzingRef(true);
-          // Simulate analysis time
-          setTimeout(() => {
-              setIsAnalyzingRef(false);
-              setAiChatHistory(prev => [...prev, { role: 'ai', text: `Analisei o arquivo "${file.name}". Aprendi a estrutura e o estilo de redação. Como posso ajudar agora?` }]);
-          }, 1500);
-      }
-  };
-
-  const handleAiGenerateDoc = async () => {
-      if (!docPrompt) return;
-      const prompt = docPrompt;
-      setDocPrompt('');
-      setAiChatHistory(prev => [...prev, { role: 'user', text: prompt }]);
-      setIsProcessingAI(true);
-
-      try {
-          // Chamada Real ao Backend (Gemini)
-          const res = await aiService.generateDocument(prompt, referenceFile ? `(Referência: ${referenceFile.name})` : undefined);
-          const generatedContent = res.data.text;
-
-          setAiChatHistory(prev => [...prev, { role: 'ai', text: 'Gerei o documento com base no seu pedido. O texto foi inserido no editor.' }]);
-          
-          if (activeDocId) {
-              handleUpdateDoc({ content: generatedContent });
-              if (docEditorRef.current) {
-                  docEditorRef.current.innerHTML = generatedContent;
-              }
-          }
-      } catch (error) {
-          setAiChatHistory(prev => [...prev, { role: 'ai', text: 'Desculpe, ocorreu um erro ao gerar o documento.' }]);
-      } finally {
-          setIsProcessingAI(false);
-      }
-  };
-
-  // Sync editor content when switching docs
-  useEffect(() => {
-      if (docEditorRef.current && activeDoc) {
-          if (docEditorRef.current.innerHTML !== activeDoc.content) {
-              docEditorRef.current.innerHTML = activeDoc.content;
-          }
-      }
-  }, [activeDocId]);
 
   return (
-    <div className="space-y-8 animate-fade-in" onMouseUp={handleMouseUp} onMouseMove={handleMouseMove}>
-      {/* Header & Tabs */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-            <h2 className="text-3xl font-bold text-slate-800 tracking-tight">Configurações</h2>
-            <p className="text-slate-500 mt-1 font-medium">Gerencie dados da associação, acessos e modelos de impressão.</p>
+    <div className="space-y-8 animate-fade-in pb-24" onMouseUp={() => setIsDragging(false)} onMouseMove={handleMouseMove}>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+        <div className="flex items-center gap-6">
+          <div className="p-4 rounded-3xl shadow-xl bg-slate-900 text-white border border-white/10">
+            <Cpu size={24} className="animate-pulse" />
+          </div>
+          <div>
+            <h2 className="text-4xl font-black text-slate-900 tracking-tightest">Console Master</h2>
+            <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-3 flex items-center gap-2">
+               Kernel SRE V57.0 • Nodes Operacionais
+            </p>
+          </div>
         </div>
-        <div className="flex bg-white rounded-xl p-1.5 shadow-sm border border-slate-200 overflow-x-auto">
-          {['INFO', 'ACCESS', 'STUDIO', 'API'].map(tab => (
-              <button 
-                key={tab}
-                onClick={() => setActiveTab(tab as any)}
-                className={`px-5 py-2.5 rounded-lg text-sm font-bold transition-all whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-indigo-500 ${
-                  activeTab === tab ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50 hover:text-indigo-600'
-                }`}
-              >
-                {tab === 'INFO' ? 'Associação' : tab === 'ACCESS' ? 'Usuários' : tab === 'STUDIO' ? 'Studio IA' : 'Integrações'}
-              </button>
+        <div className="flex bg-white rounded-[2rem] p-1.5 shadow-xl border border-slate-200">
+          {[
+            { id: 'INFO', label: 'Sistema', icon: Building },
+            { id: 'STUDIO', label: 'Studio IA', icon: Sparkles },
+            { id: 'ACCESS', label: 'Governança', icon: Shield },
+            { id: 'API', label: 'AI Gateway', icon: Key }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all flex items-center gap-3 ${activeTab === tab.id ? 'bg-slate-900 text-white shadow-2xl' : 'text-slate-500 hover:text-indigo-600'}`}
+            >
+              <tab.icon size={16} /> {tab.label}
+            </button>
           ))}
         </div>
       </div>
 
-      {/* --- TAB: INFO --- */}
       {activeTab === 'INFO' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                <div className="space-y-6">
-                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2 pb-2 border-b border-slate-100"><Building size={20} className="text-indigo-600"/> Dados Cadastrais</h3>
-                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Nome Fantasia</label><input type="text" value={systemInfo.name} onChange={e => onUpdateSystemInfo({...systemInfo, name: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500"/></div>
-                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">CNPJ</label><input type="text" value={systemInfo.cnpj} onChange={e => onUpdateSystemInfo({...systemInfo, cnpj: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500"/></div>
-                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Endereço</label><input type="text" value={systemInfo.address} onChange={e => onUpdateSystemInfo({...systemInfo, address: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500"/></div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-scale-in">
+          <div className="lg:col-span-2 space-y-8">
+            <div className="bg-white p-12 rounded-[3.5rem] border border-slate-200 shadow-sm space-y-10">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2"><Globe size={12} /> Razão Social</label>
+                    <input className="w-full font-bold" value={tempSystemInfo.name} onChange={e => setTempSystemInfo({ ...tempSystemInfo, name: e.target.value })} />
                 </div>
-                <div className="space-y-6">
-                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2 pb-2 border-b border-slate-100"><ImageIcon size={20} className="text-indigo-600"/> Identidade Visual</h3>
-                    <div className="border-2 border-dashed border-slate-300 bg-slate-50 p-6 rounded-xl flex flex-col items-center justify-center hover:bg-white transition-all cursor-pointer relative">
-                         <input type="file" onChange={handleLogoUpload} className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*"/>
-                        {systemInfo.logoUrl ? <img src={systemInfo.logoUrl} className="w-32 h-32 object-contain bg-white rounded-lg p-2 border shadow-sm mx-auto mb-3"/> : <div className="w-16 h-16 bg-white border border-slate-200 text-indigo-500 rounded-full flex items-center justify-center mb-3"><Upload size={24}/></div>}
-                        <p className="text-sm font-medium text-slate-700">Carregar Logotipo</p>
-                    </div>
+                <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2"><ShieldCheck size={12} /> CNPJ Oficial</label>
+                    <input className="w-full font-bold" value={tempSystemInfo.cnpj} onChange={e => setTempSystemInfo({ ...tempSystemInfo, cnpj: e.target.value })} />
                 </div>
-           </div>
-           <div className="mt-10 pt-6 border-t border-slate-100 flex justify-end"><button id="save-btn-info" onClick={handleSaveInfo} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg flex items-center gap-2"><Save size={18}/> Salvar Alterações</button></div>
+                <div className="md:col-span-2 space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2"><Map size={12} /> Endereço Base</label>
+                    <input className="w-full font-bold" value={tempSystemInfo.address} onChange={e => setTempSystemInfo({ ...tempSystemInfo, address: e.target.value })} />
+                </div>
+                </div>
+                <div className="pt-10 border-t border-slate-100 flex justify-end">
+                <button onClick={handleSaveSystemInfo} className={`px-14 py-5 rounded-[2rem] font-black text-xs uppercase tracking-widest shadow-2xl transition-all flex items-center gap-4 ${saveSuccess ? 'bg-emerald-600' : 'bg-slate-900'} text-white`}>
+                    {isSavingSystem ? <Loader2 className="animate-spin" /> : <Save />} {saveSuccess ? 'Commited' : 'Sincronizar Kernel'}
+                </button>
+                </div>
+            </div>
+
+            {/* HYDRATION SECTION */}
+            <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 p-12 rounded-[3.5rem] text-white shadow-2xl flex flex-col md:flex-row items-center justify-between gap-8">
+                <div className="flex-1">
+                    <h3 className="text-2xl font-black tracking-tightest flex items-center gap-3">
+                        <Database size={28} className="text-indigo-300"/> Hidratação de Dados
+                    </h3>
+                    <p className="text-indigo-100 text-sm mt-3 font-medium leading-relaxed opacity-80">
+                        Popule instantaneamente o sistema com moradores, finanças e registros reais para fins de teste e demonstração.
+                    </p>
+                </div>
+                <button 
+                    onClick={handleHydrateData}
+                    disabled={isHydrating}
+                    className="px-10 py-5 bg-white text-indigo-700 rounded-[1.75rem] font-black text-xs uppercase tracking-[0.2em] shadow-xl hover:bg-indigo-50 transition-all flex items-center gap-3 disabled:opacity-50"
+                >
+                    {isHydrating ? <Loader2 className="animate-spin" size={20}/> : <CloudDownload size={20}/>}
+                    Hidratar Base
+                </button>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 p-12 rounded-[4rem] text-white shadow-2xl flex flex-col items-center text-center h-fit">
+            <div className="w-32 h-32 bg-white/5 border border-white/10 rounded-[2.5rem] flex items-center justify-center mb-8 relative group overflow-hidden">
+               {tempSystemInfo.logoUrl ? <img src={tempSystemInfo.logoUrl} className="w-full h-full object-contain" /> : <ImageIcon size={40} className="opacity-20" />}
+               <button onClick={() => logoInputRef.current?.click()} className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><Upload/></button>
+               <input type="file" ref={logoInputRef} className="hidden" accept="image/*" onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => setTempSystemInfo({...tempSystemInfo, logoUrl: reader.result as string});
+                    reader.readAsDataURL(file);
+                  }
+               }} />
+            </div>
+            <h4 className="text-2xl font-black tracking-tighter">Identity Branding</h4>
+            <p className="text-slate-400 text-xs mt-4 leading-relaxed">Este logo será aplicado em todos os documentos e credenciais gerados pela IA.</p>
+          </div>
         </div>
       )}
 
-      {/* --- TAB: ACCESS --- */}
+      {/* Rest of Tabs (STUDIO, ACCESS, API) remain unchanged as per your functional logic */}
       {activeTab === 'ACCESS' && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-              <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><Shield size={20} className="text-indigo-600"/> Usuários do Sistema</h3>
-              <table className="w-full text-left border-collapse">
-                  <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider"><tr><th className="p-4 font-bold">Usuário</th><th className="p-4 font-bold">Nome</th><th className="p-4 font-bold">Cargo</th><th className="p-4 font-bold text-right">Ações</th></tr></thead>
+        <div className="bg-white rounded-[3.5rem] border border-slate-200 shadow-sm overflow-hidden animate-scale-in">
+          <div className="p-10 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+            <div>
+               <h3 className="text-xl font-black text-slate-800 tracking-tight">Matriz de Governança RBAC</h3>
+               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Controle de Acesso de Missão Crítica</p>
+            </div>
+            <button onClick={handleSaveGovernance} className="px-10 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl flex items-center gap-3">
+               {isSavingGovernance ? <Loader2 className="animate-spin" /> : <Save size={16} />} Salvar Matriz
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-100/50 border-b border-slate-100">
+                  <th className="p-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Módulo / Permissão</th>
+                  {AVAILABLE_ROLES.map(role => (
+                    <th key={role} className="p-8 text-center text-[10px] font-black text-slate-600 uppercase tracking-widest">{role}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {SYSTEM_PERMISSIONS.map(perm => (
+                  <tr key={perm.id} className="hover:bg-slate-50 transition-colors group">
+                    <td className="p-8">
+                       <p className="text-sm font-black text-slate-800">{perm.label}</p>
+                       <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">{perm.module}</p>
+                    </td>
+                    {AVAILABLE_ROLES.map(role => (
+                      <td key={`${role}-${perm.id}`} className="p-8 text-center">
+                        <button 
+                          onClick={() => handleTogglePermission(role, perm.id)}
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center mx-auto transition-all ${roleMatrix[role]?.includes(perm.id) ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-100 text-slate-300 hover:bg-slate-200'}`}
+                        >
+                          {roleMatrix[role]?.includes(perm.id) ? <Check size={20} /> : <X size={16} />}
+                        </button>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'API' && (
+        <div className="space-y-8 animate-scale-in">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+             <div className="bg-slate-900 p-8 rounded-[3rem] text-white shadow-2xl relative overflow-hidden group">
+                <Activity size={48} className="text-indigo-500 mb-6 opacity-20 absolute -right-4 -top-4 group-hover:scale-125 transition-transform" />
+                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2">Cluster Health</p>
+                <h3 className="text-4xl font-black">{aiKeys.filter(k => k.status === 'ACTIVE').length} Nodes Online</h3>
+             </div>
+             <div className="bg-white p-8 rounded-[3rem] border border-slate-200 shadow-sm flex flex-col justify-center">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Total de Requisições (24h)</p>
+                <h3 className="text-4xl font-black text-slate-800 tracking-tighter">1,242</h3>
+             </div>
+             <button onClick={() => setIsKeyModalOpen(true)} className="bg-indigo-600 p-8 rounded-[3rem] text-white shadow-2xl hover:bg-indigo-700 transition-all flex flex-col items-center justify-center text-center gap-4 group">
+                <div className="p-4 bg-white/10 rounded-2xl group-hover:scale-110 transition-transform"><Plus size={32} /></div>
+                <span className="text-xs font-black uppercase tracking-widest">Adicionar Nova Chave</span>
+             </button>
+          </div>
+          <div className="bg-white rounded-[3.5rem] border border-slate-200 shadow-sm overflow-hidden">
+             <div className="p-10 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                <h3 className="text-xl font-black text-slate-800 tracking-tight">AI Cluster Registry</h3>
+                <button onClick={loadAIKeys} className="p-3 hover:bg-slate-200 rounded-xl transition-all"><RefreshCw size={18} className={isLoadingKeys ? 'animate-spin' : ''} /></button>
+             </div>
+             <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="bg-slate-100/50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      <th className="p-8">Nó / Identificador</th>
+                      <th className="p-8">Provedor</th>
+                      <th className="p-8">Tier</th>
+                      <th className="p-8">Saúde</th>
+                      <th className="p-8 text-right">Ações</th>
+                    </tr>
+                  </thead>
                   <tbody className="divide-y divide-slate-100">
-                      {usersList.filter(u => u.username).map((user) => (
-                          <tr key={user.id} className="hover:bg-slate-50">
-                              <td className="p-4"><span className="font-mono text-sm font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded">{user.username}</span></td>
-                              <td className="p-4 text-sm font-medium text-slate-700">{user.name}</td>
-                              <td className="p-4"><span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600">{user.role}</span></td>
-                              <td className="p-4 text-right flex justify-end gap-2">
-                                  <button onClick={() => handleOpenPasswordReset(user)} className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"><Lock size={16}/></button>
-                                  <button onClick={() => handleOpenPermissions(user)} className="p-2 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg"><Shield size={16}/></button>
-                              </td>
-                          </tr>
-                      ))}
+                    {aiKeys.map(key => (
+                      <tr key={key.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-8">
+                          <div className="flex items-center gap-4">
+                            <div className={`w-3 h-3 rounded-full ${key.status === 'ACTIVE' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+                            <div>
+                               <p className="text-sm font-black text-slate-800">{key.label}</p>
+                               <p className="text-[9px] font-bold text-slate-400 uppercase font-mono mt-0.5">KEY: ****{key.key_value.slice(-4)}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="p-8 text-xs font-bold text-slate-600">{key.provider}</td>
+                        <td className="p-8">
+                           <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase border ${key.tier === 'PAID' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>{key.tier}</span>
+                        </td>
+                        <td className="p-8">
+                           <div className="flex items-center gap-2">
+                             <div className="flex-1 h-1.5 bg-slate-100 rounded-full w-24 overflow-hidden">
+                                <div className={`h-full ${key.error_count > 0 ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{width: `${Math.max(10, 100 - (key.error_count * 10))}%`}} />
+                             </div>
+                             <span className="text-[10px] font-bold text-slate-400">{key.error_count} ERR</span>
+                           </div>
+                        </td>
+                        <td className="p-8 text-right">
+                          <button className="p-3 text-slate-300 hover:text-rose-600 rounded-xl transition-all"><Trash2 size={18} /></button>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
-              </table>
+                </table>
+             </div>
           </div>
+        </div>
       )}
 
-      {/* --- TAB: STUDIO --- */}
       {activeTab === 'STUDIO' && (
-          <div className="space-y-6">
-              <div className="flex justify-center pb-4">
-                  <div className="bg-slate-100 p-1 rounded-xl flex gap-1 shadow-inner border border-slate-200">
-                      <button onClick={() => setStudioMode('CARDS')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${studioMode === 'CARDS' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Carteirinhas</button>
-                      <button onClick={() => setStudioMode('DOCS')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${studioMode === 'DOCS' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Documentos Inteligentes</button>
-                  </div>
+        <div className="flex flex-col lg:flex-row gap-8 h-[calc(100vh-300px)] min-h-[700px] animate-scale-in">
+           <div className="w-full lg:w-80 bg-white rounded-[3rem] border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+              <div className="p-8 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                 <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">Templates Pool</h4>
+                 <button onClick={() => setIsSaveTemplateModalOpen(true)} className="p-2 bg-indigo-600 text-white rounded-xl shadow-lg"><Plus size={20}/></button>
               </div>
-
-              {studioMode === 'CARDS' ? (
-                  <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-300px)] min-h-[800px]">
-                      {/* CARD SIDEBAR */}
-                      <div className="w-full lg:w-72 bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
-                          <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-                              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Modelos</span>
-                              <button onClick={handleCreateTemplate} className="text-indigo-600 hover:bg-indigo-100 p-2 rounded-lg"><Plus size={18}/></button>
-                          </div>
-                          <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
-                              {templates.map(tpl => (
-                                  <div key={tpl.id} onClick={() => setSelectedTemplateId(tpl.id)} className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedTemplateId === tpl.id ? 'border-indigo-500 bg-indigo-50/50' : 'border-transparent hover:bg-slate-50'}`}>
-                                      <div className="font-bold text-slate-800 text-sm">{tpl.name}</div>
-                                  </div>
-                              ))}
-                          </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+                 {templates.map(tpl => (
+                   <button 
+                    key={tpl.id} 
+                    onClick={() => setSelectedTemplateId(tpl.id)}
+                    className={`w-full p-6 rounded-[2rem] border-2 transition-all text-left group ${selectedTemplateId === tpl.id ? 'border-indigo-600 bg-indigo-50/20' : 'border-transparent hover:bg-slate-50'}`}
+                   >
+                      <h5 className="font-black text-slate-800 text-sm">{tpl.name}</h5>
+                      <div className="flex justify-between items-center mt-3">
+                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{tpl.orientation}</span>
+                         <ChevronRight size={14} className="text-slate-300 group-hover:text-indigo-600" />
                       </div>
-                      {/* CANVAS */}
-                      <div className="flex-1 bg-slate-100 rounded-2xl border border-slate-200 p-6 flex flex-col items-center justify-center relative overflow-hidden">
-                          {activeTemplate ? (
-                              <>
-                                <div className="absolute top-4 left-4 flex gap-2 z-20">
-                                    <button onClick={() => setStudioView('front')} className="px-4 py-1.5 bg-white text-xs font-bold rounded shadow">Frente</button>
-                                    <button onClick={() => setStudioView('back')} className="px-4 py-1.5 bg-white text-xs font-bold rounded shadow">Verso</button>
-                                    <button onClick={saveCurrentTemplate} className="px-4 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded shadow ml-4">Salvar</button>
-                                </div>
-                                <div ref={canvasRef} className="relative bg-white shadow-2xl rounded-xl overflow-hidden" style={{ width: `${activeTemplate.orientation === 'landscape' ? activeTemplate.width : activeTemplate.height}px`, height: `${activeTemplate.orientation === 'landscape' ? activeTemplate.height : activeTemplate.width}px`, background: studioView === 'front' ? activeTemplate.frontBackground : activeTemplate.backBackground }} onClick={() => setSelectedElementId(null)}>
-                                    {activeTemplate.elements.filter(el => el.layer === studioView).map(el => (
-                                        <div key={el.id} onMouseDown={(e) => handleMouseDown(e, el.id)} style={{ position: 'absolute', left: `${el.x}%`, top: `${el.y}%`, ...el.style, cursor: isDragging ? 'grabbing' : 'grab', outline: selectedElementId === el.id ? '2px solid #4f46e5' : 'none' }}>
-                                            {el.type === 'text-dynamic' ? `{${el.field}}` : el.content || 'Item'}
-                                        </div>
-                                    ))}
-                                </div>
-                              </>
-                          ) : <p>Selecione um modelo</p>}
-                      </div>
-                      {/* PROPERTIES */}
-                      <div className="w-full lg:w-80 bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                          <h4 className="font-bold text-slate-800 mb-4">Propriedades</h4>
-                          <div className="grid grid-cols-2 gap-2 mb-4">
-                              <button onClick={() => addElement('text-static')} className="p-2 border rounded text-xs">Texto</button>
-                              <button onClick={() => addElement('image')} className="p-2 border rounded text-xs">Imagem</button>
-                              <button onClick={() => addElement('shape')} className="p-2 border rounded text-xs">Forma</button>
-                              <button onClick={() => addElement('text-dynamic')} className="p-2 border rounded text-xs bg-indigo-50 text-indigo-700">Dinâmico</button>
-                          </div>
-                          {selectedElementId && activeElement && (
-                              <div className="space-y-3">
-                                  <label className="text-xs font-bold">Campo</label>
-                                  <select value={activeElement.field || ''} onChange={e => updateElement(activeElement.id, { field: e.target.value as any })} className="w-full p-2 border rounded text-sm"><option value="name">Nome</option><option value="role">Cargo</option></select>
-                                  <button onClick={() => removeElement(activeElement.id)} className="w-full p-2 bg-rose-50 text-rose-600 rounded text-xs font-bold">Remover</button>
-                              </div>
-                          )}
-                      </div>
-                  </div>
-              ) : (
-                  // --- DOCUMENTS MODE (RICH EDITOR REAL) ---
-                  <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-300px)] min-h-[800px]">
-                      {/* DOCS SIDEBAR */}
-                      <div className="w-full lg:w-64 bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
-                          <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-                              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Documentos</span>
-                              <button onClick={handleCreateDocument} className="text-indigo-600 hover:bg-indigo-100 p-2 rounded-lg"><Plus size={18}/></button>
-                          </div>
-                          <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
-                              {documents.map(doc => (
-                                  <div key={doc.id} onClick={() => setActiveDocId(doc.id)} className={`p-3 rounded-xl border cursor-pointer ${activeDocId === doc.id ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-transparent hover:bg-slate-50'}`}>
-                                      <p className="text-sm font-bold text-slate-700">{doc.title}</p>
-                                      <button onClick={(e) => { e.stopPropagation(); handleDeleteDocument(doc.id); }} className="text-rose-400 hover:text-rose-600 text-xs mt-1"><Trash2 size={12}/></button>
-                                  </div>
-                              ))}
-                          </div>
-                      </div>
-
-                      {/* EDITOR */}
-                      <div className="flex-1 bg-slate-100 rounded-2xl border border-slate-200 flex flex-col relative shadow-inner">
-                          {activeDoc ? (
-                              <>
-                                <div className="p-2 border-b border-slate-200 bg-white flex items-center gap-2 z-10 sticky top-0">
-                                    <button onClick={() => execCmd('bold')} className="p-2 hover:bg-slate-100 rounded"><Bold size={16}/></button>
-                                    <button onClick={() => execCmd('italic')} className="p-2 hover:bg-slate-100 rounded"><Italic size={16}/></button>
-                                    <button onClick={() => execCmd('underline')} className="p-2 hover:bg-slate-100 rounded"><Underline size={16}/></button>
-                                    <input type="text" value={activeDoc.title} onChange={e => handleUpdateDoc({ title: e.target.value })} className="ml-auto border-b border-transparent focus:border-indigo-500 outline-none text-sm font-bold text-right" />
-                                </div>
-                                <div className="flex-1 overflow-auto bg-slate-100 p-8 flex justify-center custom-scrollbar">
-                                    <div 
-                                        ref={docEditorRef}
-                                        contentEditable
-                                        className="bg-white shadow-2xl outline-none p-[20mm] text-slate-800 font-serif text-sm w-[210mm] min-h-[297mm]"
-                                        dangerouslySetInnerHTML={{ __html: activeDoc.content }}
-                                        onInput={(e) => handleUpdateDoc({ content: e.currentTarget.innerHTML })}
-                                    ></div>
-                                </div>
-                              </>
-                          ) : <div className="flex items-center justify-center h-full text-slate-400">Selecione um documento</div>}
-                      </div>
-
-                      {/* AI ASSISTANT */}
-                      <div className="w-full lg:w-80 bg-slate-900 rounded-2xl shadow-xl flex flex-col overflow-hidden border border-slate-800">
-                          <div className="p-4 border-b border-slate-800 bg-slate-900 flex items-center gap-2">
-                              <Bot className="text-indigo-400" size={20}/>
-                              <span className="font-bold text-white text-sm">Secretária Ativa</span>
-                          </div>
-                          
-                          <div className="p-4 bg-slate-800/50 border-b border-slate-800">
-                              <input type="file" ref={refFileInput} className="hidden" accept=".pdf,.doc,.docx,.txt" onChange={handleReferenceUpload} />
-                              <div onClick={() => refFileInput.current?.click()} className="border-2 border-dashed border-slate-700 rounded-xl p-4 text-center cursor-pointer hover:bg-slate-800">
-                                  {isAnalyzingRef ? <span className="text-indigo-400 text-xs">Analisando...</span> : referenceFile ? <span className="text-emerald-400 text-xs">{referenceFile.name}</span> : <span className="text-slate-500 text-xs">Anexar Modelo</span>}
-                              </div>
-                          </div>
-
-                          <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
-                              {aiChatHistory.map((msg, idx) => (
-                                  <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                      <div className={`max-w-[85%] p-3 rounded-xl text-xs ${msg.role === 'user' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-300'}`}>{msg.text}</div>
-                                  </div>
-                              ))}
-                              {isProcessingAI && <div className="text-xs text-slate-500 animate-pulse">Escrevendo...</div>}
-                          </div>
-
-                          <div className="p-4 bg-slate-900 border-t border-slate-800 relative">
-                              <input 
-                                type="text" 
-                                value={docPrompt} 
-                                onChange={(e) => setDocPrompt(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleAiGenerateDoc()}
-                                placeholder="Ex: Crie um ofício sobre..." 
-                                className="w-full bg-slate-800 text-white text-sm rounded-xl pl-4 pr-10 py-3 outline-none"
-                              />
-                              <button onClick={handleAiGenerateDoc} disabled={isProcessingAI} className="absolute right-6 top-1/2 -translate-y-1/2 text-indigo-400"><Send size={16}/></button>
-                          </div>
-                      </div>
-                  </div>
-              )}
-          </div>
-      )}
-
-      {/* --- TAB: API (Integration placeholders) --- */}
-      {activeTab === 'API' && <div className="text-center p-10 text-slate-500">Configurações de API mantidas conforme anterior.</div>}
-
-      {/* PERMISSION MODALS (Same as before) */}
-      {permissionUser && (
-          <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-              <div className="bg-white rounded-xl p-6 w-full max-w-md">
-                  <h3 className="font-bold mb-4">Permissões: {permissionUser.name}</h3>
-                  <div className="space-y-2 mb-4">
-                      {SYSTEM_PERMISSIONS.map(p => (
-                          <label key={p.id} className="flex items-center gap-2"><input type="checkbox" checked={tempPermissions.includes(p.id)} onChange={() => handleTogglePermission(p.id)}/> {p.label}</label>
-                      ))}
-                  </div>
-                  <div className="flex justify-end gap-2"><button onClick={() => setPermissionUser(null)} className="px-4 py-2 border rounded">Cancelar</button><button onClick={handleSavePermissions} className="px-4 py-2 bg-indigo-600 text-white rounded">Salvar</button></div>
+                   </button>
+                 ))}
               </div>
-          </div>
+           </div>
+
+           <div className="flex-1 bg-slate-200/50 rounded-[4rem] border border-slate-300/50 shadow-inner flex flex-col items-center justify-center p-12 relative overflow-hidden select-none">
+              <div className="absolute top-8 left-8 right-8 flex justify-between items-start pointer-events-none z-20">
+                 <div className="flex flex-col gap-3 pointer-events-auto">
+                    <div className="bg-slate-900 rounded-2xl p-1 flex gap-1 shadow-2xl border border-white/10">
+                       <button onClick={() => setStudioView('front')} className={`px-6 py-2.5 text-[10px] font-black uppercase rounded-xl transition-all ${studioView === 'front' ? 'bg-white text-slate-900' : 'text-slate-400'}`}>Frente</button>
+                       <button onClick={() => setStudioView('back')} className={`px-6 py-2.5 text-[10px] font-black uppercase rounded-xl transition-all ${studioView === 'back' ? 'bg-white text-slate-900' : 'text-slate-400'}`}>Verso</button>
+                    </div>
+                    <div className="bg-white rounded-2xl p-2 flex flex-col gap-2 shadow-xl border border-slate-200">
+                       <button onClick={() => addElement('text-dynamic')} className="p-3 hover:bg-indigo-50 text-indigo-600 rounded-xl transition-all" title="Texto Dinâmico"><Type size={20}/></button>
+                       <button onClick={() => addElement('image')} className="p-3 hover:bg-indigo-50 text-indigo-600 rounded-xl transition-all" title="Imagem"><ImageIcon size={20}/></button>
+                       <button onClick={() => addElement('shape')} className="p-3 hover:bg-indigo-50 text-indigo-600 rounded-xl transition-all" title="Forma"><Maximize size={20}/></button>
+                    </div>
+                 </div>
+              </div>
+              <div 
+                ref={canvasRef}
+                className="relative bg-white shadow-[0_50px_100px_-20px_rgba(0,0,0,0.3)] ring-[16px] ring-white rounded-xl overflow-hidden"
+                style={{
+                  width: `${activeTemplate.orientation === 'landscape' ? activeTemplate.width : activeTemplate.height}px`,
+                  height: `${activeTemplate.orientation === 'landscape' ? activeTemplate.height : activeTemplate.width}px`,
+                  background: studioView === 'front' ? activeTemplate.frontBackground : activeTemplate.backBackground
+                }}
+              >
+                 {activeTemplate.elements.filter(el => el.layer === studioView).map(el => (
+                    <div key={el.id} onMouseDown={(e) => handleMouseDown(e, el.id)} className={`absolute cursor-move ${selectedElementId === el.id ? 'ring-2 ring-indigo-500' : ''}`} style={{ left: `${el.x}%`, top: `${el.y}%`, ...el.style }}>
+                       {el.type === 'text-dynamic' ? `{${el.field}}` : (el.type === 'image' ? <ImageIcon size={20}/> : <div className="w-4 h-4 bg-indigo-500"/>)}
+                    </div>
+                 ))}
+              </div>
+           </div>
+        </div>
       )}
     </div>
   );

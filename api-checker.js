@@ -7,7 +7,7 @@ import mysql from 'mysql2/promise';
 
 dotenv.config();
 
-const API_URL = `http://localhost:${process.env.PORT || 3000}`;
+const API_URL = `http://localhost:${process.env.PORT || 3001}`;
 const endpoints = [
     '/api/auth/me', // Deve retornar 401
     '/api/settings/system', // Deve retornar 401

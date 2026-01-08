@@ -6,41 +6,73 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// https://vitejs.dev/config/
+/**
+ * S.I.E PRO - Optimized Vite Config (SRE PRODUCTION BRANCH V22.5)
+ * Focus: Enterprise Code-Splitting, Asset Optimization, and Reverse Proxy Stability.
+ */
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@': path.resolve(__dirname, './'), // Corrected to root per SRE directory structure
     },
   },
   server: {
     host: true,
     port: 5173,
     proxy: {
-      // Redireciona chamadas /api para o backend Node.js local ou na VPS
+      // Redirects /api calls to the Node.js Kernel
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:3001',
         changeOrigin: true,
         secure: false,
       },
-      // Proxy para servir uploads de imagens
+      // Proxy for handling static user uploads
       '/uploads': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:3001',
         changeOrigin: true,
       }
     }
   },
   build: {
     outDir: 'dist',
+    emptyOutDir: true,
     sourcemap: false,
-    chunkSizeWarningLimit: 1000,
+    minify: 'esbuild',
+    target: 'es2020',
+    cssCodeSplit: true,
+    assetsInlineLimit: 4096, // Inline assets smaller than 4kb
+    chunkSizeWarningLimit: 1500, // Adjusted for heavy SRE operational modules
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom', 'recharts', 'leaflet'],
-          utils: ['html2canvas', 'jspdf', 'date-fns']
-        }
+        // SRE Strategic Code Splitting
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom')) {
+              return 'vendor-core';
+            }
+            if (id.includes('recharts') || id.includes('d3')) {
+              return 'vendor-viz';
+            }
+            if (id.includes('leaflet')) {
+              return 'vendor-geo';
+            }
+            if (id.includes('lucide-react')) {
+              return 'vendor-icons';
+            }
+            if (id.includes('html2canvas') || id.includes('jspdf')) {
+              return 'vendor-docs';
+            }
+            if (id.includes('axios') || id.includes('date-fns')) {
+              return 'vendor-utils';
+            }
+            return 'vendor-others';
+          }
+        },
+        // Hashed assets for robust cache invalidation
+        entryFileNames: 'assets/sie-[name]-[hash].js',
+        chunkFileNames: 'assets/core-[name]-[hash].js',
+        assetFileNames: 'assets/res-[name]-[hash].[ext]'
       }
     }
   }

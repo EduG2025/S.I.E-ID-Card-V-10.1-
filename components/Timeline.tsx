@@ -1,52 +1,64 @@
+
 import React, { useState, useEffect } from 'react';
 import { AgendaEvent } from '../types';
 import { agendaService } from '../services/api';
 import { 
-    Calendar as CalendarIcon, AlertTriangle, Users, FileText, ChevronRight, X, Bell,
-    ChevronLeft, List, Plus, Clock, MapPin, Loader2
+    Calendar as CalendarIcon, ChevronRight, X, Plus, Clock, Loader2, Trash2, Edit2, Save, Printer
 } from 'lucide-react';
 
-const Timeline: React.FC = () => {
-  const [events, setEvents] = useState<AgendaEvent[]>([]);
+const Timeline = () => {
+  const [events, setEvents] = useState([] as AgendaEvent[]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'LIST' | 'CALENDAR'>('LIST');
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [calendarMode, setCalendarMode] = useState<'MONTH' | 'WEEK'>('MONTH');
+  const [view, setView] = useState('LIST' as 'LIST' | 'CALENDAR');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newEvent, setNewEvent] = useState<Partial<AgendaEvent>>({ type: 'MEETING', status: 'UPCOMING', date: new Date().toISOString().slice(0, 16), reminder: 'NONE' });
+  const [isSaving, setIsSaving] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<any>(null);
 
-  useEffect(() => {
-      const loadEvents = async () => {
-          try {
-              const res = await agendaService.getAll();
-              setEvents(res.data);
-          } catch (error) {
-              console.error(error);
-          } finally {
-              setLoading(false);
-          }
-      };
-      loadEvents();
-  }, []);
+  useEffect(() => { loadData(); }, []);
 
-  const handleCreateEvent = async () => {
-      if (!newEvent.title || !newEvent.date) return;
+  const loadData = async () => {
       try {
-          const eventToCreate = {
-              ...newEvent,
-              status: 'UPCOMING',
-              description: newEvent.description || '',
-          };
-          const res = await agendaService.create(eventToCreate);
-          setEvents([...events, res.data].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
-          setIsModalOpen(false);
-          setNewEvent({ type: 'MEETING', status: 'UPCOMING', date: new Date().toISOString().slice(0, 16), reminder: 'NONE' });
-      } catch (error) {
-          alert('Erro ao criar evento');
-      }
+          setLoading(true);
+          const res = await agendaService.getAll();
+          setEvents(res.data);
+      } finally { setLoading(false); }
   };
 
-  // ... (Helper functions: getEventIcon, getEventColor, navigateCalendar, getDaysArray, renderCalendarCell remain largely the same)
+  const handleOpenCreate = () => {
+      setEditingEvent({ title: '', description: '', date: new Date().toISOString().slice(0, 16), type: 'MEETING', status: 'UPCOMING' });
+      setIsModalOpen(true);
+  };
+
+  // FIX: Use any to bypass namespace 'React' error
+  const handleSave = async (e: any) => {
+      e.preventDefault();
+      setIsSaving(true);
+      try {
+          if (editingEvent.id) {
+              await agendaService.update(editingEvent.id, editingEvent);
+          } else {
+              await agendaService.create(editingEvent);
+          }
+          setIsModalOpen(false);
+          loadData();
+      } finally { setIsSaving(false); }
+  };
+
+  const handleDelete = async (id: number | string) => {
+      if (!confirm("Excluir este compromisso permanentemente?")) return;
+      await agendaService.delete(id);
+      loadData();
+  };
+
+  const handlePrintTimeline = () => {
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+        printWindow.document.write(`<html><head><title>Cronograma S.I.E</title><style>body{font-family:sans-serif;padding:50px} table{width:100%;border-collapse:collapse} th,td{border-bottom:1px solid #eee;padding:15px;text-align:left}</style></head><body><h1>Agenda Comunitária Ativa</h1><table><thead><tr><th>Data</th><th>Evento</th><th>Tipo</th></tr></thead><tbody>${events.map(e => `<tr><td>${new Date(e.date).toLocaleDateString()}</td><td><strong>${e.title}</strong><br/>${e.description}</td><td>${e.type}</td></tr>`).join('')}</tbody></table></body></html>`);
+        printWindow.document.close();
+        printWindow.print();
+    }
+  };
+
   const getEventColor = (type: AgendaEvent['type']) => {
       switch(type) {
           case 'MEETING': return 'bg-indigo-50 border-indigo-100 text-indigo-700';
@@ -56,89 +68,69 @@ const Timeline: React.FC = () => {
       }
   };
 
-  const getDaysArray = () => {
-      const year = currentDate.getFullYear();
-      const month = currentDate.getMonth();
-      const days = [];
-      if (calendarMode === 'MONTH') {
-          const firstDayOfMonth = new Date(year, month, 1).getDay();
-          const daysInMonth = new Date(year, month + 1, 0).getDate();
-          for (let i = 0; i < firstDayOfMonth; i++) { days.push(null); }
-          for (let i = 1; i <= daysInMonth; i++) { days.push(new Date(year, month, i)); }
-      } else {
-          const curr = new Date(currentDate);
-          const first = curr.getDate() - curr.getDay(); 
-          for (let i = 0; i < 7; i++) { const day = new Date(curr.setDate(first + i)); days.push(day); }
-      }
-      return days;
-  };
-
-  const renderCalendarCell = (date: Date | null) => {
-      if (!date) return <div className="bg-slate-50/50 min-h-[100px] border-b border-r border-slate-100"></div>;
-      const dateStr = date.toISOString().slice(0, 10);
-      const dayEvents = events.filter(e => e.date.startsWith(dateStr));
-      return (
-          <div className={`min-h-[100px] p-2 border-b border-r border-slate-100 hover:bg-slate-50 transition-colors`}>
-              <div className="flex justify-between items-start mb-2"><span className="text-sm font-bold text-slate-700">{date.getDate()}</span></div>
-              <div className="space-y-1">{dayEvents.map(ev => (<div key={ev.id} className={`text-[10px] px-1.5 py-1 rounded border truncate font-bold ${getEventColor(ev.type)}`}>{ev.title}</div>))}</div>
-          </div>
-      );
-  };
-
   return (
-    <div className="space-y-6 animate-fade-in">
-       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div><h2 className="text-2xl font-bold text-slate-800">Agenda & Timeline</h2><p className="text-sm text-slate-500 mt-1 font-medium">Calendário de eventos, manutenções e prazos.</p></div>
-            <div className="flex gap-3">
-                <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all"><Plus size={18}/> Novo Evento</button>
+    <div className="space-y-8 animate-fade-in pb-12">
+        <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+            <div>
+                <h2 className="text-3xl font-black text-slate-800 tracking-tighter leading-none">Timeline Comunitária</h2>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-2">Prazos e Marcos Operacionais</p>
+            </div>
+            <div className="flex gap-4">
+                <button onClick={handlePrintTimeline} className="p-3 bg-white border border-slate-200 text-slate-500 rounded-2xl hover:text-emerald-600 transition-all"><Printer size={20}/></button>
+                <button onClick={handleOpenCreate} className="flex items-center gap-2 px-8 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-indigo-600 transition-all"><Plus size={16}/> Agendar Evento</button>
             </div>
         </div>
 
-        {loading ? <div className="p-10 text-center"><Loader2 className="animate-spin inline-block text-indigo-600"/></div> : (
-            view === 'CALENDAR' ? (
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-fade-in">
-                    <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-                        <h3 className="text-xl font-bold text-slate-800 capitalize">{currentDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</h3>
-                        <div className="flex gap-2"><button onClick={() => setView('LIST')} className="p-2 border rounded">Lista</button></div>
-                    </div>
-                    <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">{['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(day => (<div key={day} className="p-3 text-center text-xs font-bold text-slate-400 uppercase">{day}</div>))}</div>
-                    <div className="grid grid-cols-7 bg-white">{getDaysArray().map((date, idx) => (<React.Fragment key={idx}>{renderCalendarCell(date)}</React.Fragment>))}</div>
-                </div>
-            ) : (
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                    <div className="flex justify-between mb-4"><h3 className="text-lg font-bold">Próximos Eventos</h3><button onClick={() => setView('CALENDAR')} className="text-indigo-600 font-bold text-sm">Ver Calendário</button></div>
-                    <div className="space-y-4">
-                        {events.map((event) => (
-                            <div key={event.id} className={`p-4 rounded-xl border ${getEventColor(event.type)}`}>
-                                <div className="flex justify-between">
-                                    <h4 className="font-bold">{event.title}</h4>
-                                    <span className="text-xs font-bold opacity-70">{new Date(event.date).toLocaleDateString()}</span>
-                                </div>
-                                <p className="text-sm opacity-80 mt-1">{event.description}</p>
+        <div className="bg-white rounded-[3rem] shadow-sm border border-slate-200 p-10">
+            {loading ? <Loader2 className="animate-spin text-indigo-600 mx-auto" size={40}/> : (
+                <div className="space-y-4">
+                    {events.map((event) => (
+                        <div key={event.id} className={`p-8 rounded-[2.5rem] border flex flex-col md:flex-row justify-between items-center gap-6 transition-all hover:shadow-xl group ${getEventColor(event.type)}`}>
+                            <div className="flex items-center gap-6 flex-1">
+                                <div className="p-4 bg-white/50 rounded-2xl shadow-sm shrink-0"><CalendarIcon size={24}/></div>
+                                <div><h4 className="font-black text-xl tracking-tight">{event.title}</h4><p className="text-sm font-medium opacity-70 mt-1">{event.description}</p></div>
                             </div>
-                        ))}
-                        {events.length === 0 && <p className="text-slate-400 text-center">Nenhum evento agendado.</p>}
-                    </div>
+                            <div className="flex items-center gap-6">
+                                <div className="flex flex-col items-end shrink-0"><span className="text-xs font-black uppercase">{new Date(event.date).toLocaleDateString('pt-BR')}</span><span className="text-[10px] font-bold opacity-60 uppercase">{new Date(event.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span></div>
+                                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button onClick={() => { setEditingEvent(event); setIsModalOpen(true); }} className="p-2 bg-white/40 hover:bg-white rounded-lg text-indigo-600"><Edit2 size={16}/></button>
+                                    <button onClick={() => handleDelete(event.id)} className="p-2 bg-white/40 hover:bg-white rounded-lg text-rose-600"><Trash2 size={16}/></button>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                    {events.length === 0 && <div className="p-20 text-center text-slate-300 font-black uppercase text-xs">Vácuo temporal detectado. Nenhum evento agendado.</div>}
                 </div>
-            )
-        )}
+            )}
+        </div>
 
-        {/* Modal Simplificado */}
         {isModalOpen && (
-            <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-4">
-                    <h3 className="font-bold text-lg">Novo Evento</h3>
-                    <input className="w-full p-2 border rounded" placeholder="Título" value={newEvent.title || ''} onChange={e => setNewEvent({...newEvent, title: e.target.value})} />
-                    <input className="w-full p-2 border rounded" type="datetime-local" value={newEvent.date} onChange={e => setNewEvent({...newEvent, date: e.target.value})} />
-                    <select className="w-full p-2 border rounded" value={newEvent.type} onChange={e => setNewEvent({...newEvent, type: e.target.value as any})}>
-                        <option value="MEETING">Reunião</option>
-                        <option value="MAINTENANCE">Manutenção</option>
-                        <option value="EVENT">Evento</option>
-                    </select>
-                    <div className="flex justify-end gap-2">
-                        <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 border rounded">Cancelar</button>
-                        <button onClick={handleCreateEvent} className="px-4 py-2 bg-indigo-600 text-white rounded">Salvar</button>
-                    </div>
+            <div className="fixed inset-0 bg-slate-900/80 z-[200] flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
+                <div className="bg-white rounded-[3.5rem] shadow-2xl w-full max-w-xl overflow-hidden border border-slate-200 animate-scale-in">
+                    <form onSubmit={handleSave}>
+                        <div className="p-8 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                            <h3 className="font-black text-2xl tracking-tighter">Gerenciar Compromisso</h3>
+                            <button type="button" onClick={() => setIsModalOpen(false)}><X/></button>
+                        </div>
+                        <div className="p-10 space-y-6">
+                            <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase ml-1">Título</label><input required className="w-full font-bold" value={editingEvent.title} onChange={e => setEditingEvent({...editingEvent, title: e.target.value})} /></div>
+                            <div className="grid grid-cols-2 gap-6">
+                                <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase ml-1">Data/Hora</label><input type="datetime-local" className="w-full font-bold" value={editingEvent.date} onChange={e => setEditingEvent({...editingEvent, date: e.target.value})} /></div>
+                                <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase ml-1">Categoria</label>
+                                    <select className="w-full font-bold" value={editingEvent.type} onChange={e => setEditingEvent({...editingEvent, type: e.target.value})}>
+                                        <option value="MEETING">Reunião</option><option value="MAINTENANCE">Manutenção</option><option value="EVENT">Evento</option><option value="DEADLINE">Prazo</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase ml-1">Descrição</label><textarea rows={3} className="w-full font-medium" value={editingEvent.description} onChange={e => setEditingEvent({...editingEvent, description: e.target.value})} /></div>
+                        </div>
+                        <div className="p-10 border-t border-slate-100 flex justify-end gap-4 bg-slate-50">
+                            <button type="button" onClick={() => setIsModalOpen(false)} className="px-10 py-4 text-slate-400 font-black text-xs uppercase">Cancelar</button>
+                            <button type="submit" disabled={isSaving} className="px-14 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase shadow-xl flex items-center gap-3">
+                                {isSaving ? <Loader2 className="animate-spin"/> : <Save size={18}/>} Salvar na Timeline
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
         )}

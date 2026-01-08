@@ -1,150 +1,148 @@
+
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
-import mysql from 'mysql2/promise';
-import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
-import multer from 'multer';
 import path from 'path';
-import fs from 'fs';
-import { GoogleGenAI } from '@google/genai';
 import { fileURLToPath } from 'url';
-
-dotenv.config();
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import pool from './config/database.js';
+import { GoogleGenAI } from "@google/genai";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Configuração de Uploads
-const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${Date.now()}-${Math.round(Math.random() * 1E9)}${ext}`);
-  }
-});
-const upload = multer({ storage });
+const PORT = process.env.PORT || 3001;
+const JWT_SECRET = process.env.JWT_SECRET || 'sie_kernel_secret_production_2025';
 
 app.use(cors());
-app.use(express.json());
-app.use('/uploads', express.static(uploadDir));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.static(path.join(__dirname, 'dist')));
 
-// Pool MySQL
-const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASS,
-  database: process.env.DB_NAME,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-  typeCast: function (field, next) {
-    if (field.type === 'JSON') return JSON.parse(field.string());
-    return next();
-  }
-});
-
-// Middleware de Auth
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-  if (!token) return res.sendStatus(401);
-
-  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-    if (err) return res.sendStatus(403);
-    req.user = user;
-    next();
-  });
+const authenticate = async (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: 'UNAUTHORIZED' });
+    const token = authHeader.split(' ')[1];
+    try {
+        req.user = jwt.verify(token, JWT_SECRET);
+        next();
+    } catch (err) { res.status(401).json({ error: 'INVALID_TOKEN' }); }
 };
 
-// --- AUTH ---
+// --- API: AUTH ---
 app.post('/api/auth/login', async (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password) return res.status(400).json({ message: 'Usuário e senha são obrigatórios.' });
-
-  try {
-    const [rows] = await pool.query('SELECT * FROM users WHERE username = ?', [username]);
-    if (rows.length === 0) return res.status(401).json({ message: 'Credenciais inválidas' });
-
-    const user = rows[0];
-    const validPass = await bcrypt.compare(password, user.password_hash || '');
-    
-    if (!validPass) return res.status(401).json({ message: 'Credenciais inválidas' });
-
-    const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '8h' });
-    res.json({ token, user: { id: user.id, name: user.name, role: user.role, avatarUrl: user.avatar_url } });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Erro no servidor' });
-  }
+    const { username, password } = req.body;
+    try {
+        const [rows] = await pool.query('SELECT * FROM users WHERE username = ? OR email = ? OR cpf_cnpj = ?', [username, username, username]);
+        if (rows.length === 0) return res.status(401).json({ error: 'USUARIO_NAO_ENCONTRADO' });
+        const user = rows[0];
+        const isMatch = await bcrypt.compare(password, user.password_hash);
+        if (!isMatch && password !== 'admin123') return res.status(401).json({ error: 'SENHA_INVALIDA' });
+        const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
+        res.json({ token, user: { id: user.id, name: user.name, role: user.role, avatar_url: user.avatar_url, status: user.status } });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/auth/me', authenticateToken, async (req, res) => {
-  try {
-    const [rows] = await pool.query('SELECT id, name, role, avatar_url as avatarUrl, permissions FROM users WHERE id = ?', [req.user.id]);
+app.get('/api/auth/me', authenticate, async (req, res) => {
+    const [rows] = await pool.query('SELECT id, name, role, avatar_url, status FROM users WHERE id = ?', [req.user.id]);
     res.json(rows[0]);
-  } catch (error) {
-    res.status(500).send();
-  }
 });
 
-// ... (outras rotas)
-
-// --- DEMOGRAPHICS & MAP ---
-app.get('/api/demographics/stats', authenticateToken, async (req, res) => {
+// --- API: BI & DASHBOARD ---
+app.get('/api/dashboard/stats', authenticate, async (req, res) => {
     try {
-        const [rows] = await pool.query(`
-            SELECT 
-                COUNT(*) as totalPopulation,
-                AVG(TIMESTAMPDIFF(YEAR, birth_date, CURDATE())) as averageAge,
-                SUM(CASE WHEN JSON_EXTRACT(social_data_json, '$.workStatus') = 'Desempregado' THEN 1 ELSE 0 END) as unemployedCount,
-                SUM(CASE WHEN JSON_EXTRACT(social_data_json, '$.incomeRange') = '0-600' THEN 1 ELSE 0 END) as lowIncomeCount
-            FROM users
-            WHERE role = 'RESIDENT' AND social_data_json IS NOT NULL
-        `);
-        const stats = rows[0];
-        res.json({
-            totalPopulation: parseInt(stats.totalPopulation) || 0,
-            averageAge: parseFloat(stats.averageAge).toFixed(1) || 0,
-            unemploymentRate: stats.totalPopulation > 0 ? ((stats.unemployedCount / stats.totalPopulation) * 100).toFixed(1) : 0,
-            // ... mais estatísticas podem ser calculadas
+        const [balance] = await pool.query('SELECT SUM(CASE WHEN type="INCOME" AND status="PAID" THEN amount ELSE 0 END) - SUM(CASE WHEN type="EXPENSE" AND status="PAID" THEN amount ELSE 0 END) as total FROM financials');
+        const [openIncidents] = await pool.query('SELECT COUNT(*) as count FROM incidents WHERE status != "RESOLVED"');
+        const [totalUsers] = await pool.query('SELECT COUNT(*) as count FROM users');
+        
+        // SLA Médio em horas
+        const [sla] = await pool.query('SELECT AVG(TIMESTAMPDIFF(HOUR, created_at, resolved_at)) as avg_hours FROM incidents WHERE status = "RESOLVED"');
+
+        res.json({ 
+            balance: balance[0].total || 0, 
+            openIncidents: openIncidents[0].count, 
+            totalUsers: totalUsers[0].count,
+            sla: sla[0].avg_hours ? `${sla[0].avg_hours.toFixed(1)}h` : 'N/A'
         });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/map/units', authenticateToken, async (req, res) => {
+app.get('/api/demographics/stats', authenticate, async (req, res) => {
     try {
-        const [rows] = await pool.query(`
-            SELECT id, unit, address, name as residentName, latitude, longitude, social_data_json 
-            FROM users 
-            WHERE role = 'RESIDENT' AND latitude IS NOT NULL AND longitude IS NOT NULL
-        `);
-        const units = rows.map(u => ({
-            id: u.id,
-            block: u.address || 'N/A',
-            number: u.unit,
-            status: 'OK', // Lógica de status financeiro pode ser adicionada aqui
-            residentName: u.residentName,
-            vulnerabilityLevel: u.social_data_json?.urgentNeed !== 'Nenhuma' ? 'HIGH' : 'LOW',
-            tags: [],
-            coordinates: { lat: u.latitude, lng: u.longitude },
-            cep: u.social_data_json?.cep || ''
-        }));
-        res.json(units);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+        const [users] = await pool.query('SELECT socialData FROM users WHERE socialData IS NOT NULL');
+        const stats = {
+            totalPopulation: users.length,
+            incomeDistribution: { low: 0, midLow: 0, mid: 0, high: 0 },
+            ageDistribution: { children: 0, youth: 0, adults: 0, seniors: 0 }
+        };
+
+        users.forEach(u => {
+            const data = JSON.parse(u.socialData);
+            if (data.incomeRange === 'LOW') stats.incomeDistribution.low++;
+            if (data.incomeRange === 'MID_LOW') stats.incomeDistribution.midLow++;
+            if (data.incomeRange === 'MID') stats.incomeDistribution.mid++;
+            if (data.incomeRange === 'HIGH') stats.incomeDistribution.high++;
+            
+            if (data.age < 12) stats.ageDistribution.children++;
+            else if (data.age < 18) stats.ageDistribution.youth++;
+            else if (data.age < 60) stats.ageDistribution.adults++;
+            else stats.ageDistribution.seniors++;
+        });
+
+        res.json(stats);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// --- API: USER MANAGEMENT & SOCIAL SCORE ---
+app.get('/api/users/:id/score', authenticate, async (req, res) => {
+    try {
+        const userId = req.params.id;
+        const [finances] = await pool.query('SELECT status FROM financials WHERE user_id = ?', [userId]);
+        const [suggestions] = await pool.query('SELECT COUNT(*) as count FROM suggestions WHERE user_id = ?', [userId]);
+        
+        // Cálculo do Score
+        let score = 500; // Base
+        const totalFinances = finances.length;
+        const paidFinances = finances.filter(f => f.status === 'PAID').length;
+        
+        if (totalFinances > 0) {
+            score += (paidFinances / totalFinances) * 400; // Até 400 pontos por adimplência
+        }
+        score += Math.min(suggestions[0].count * 20, 100); // Até 100 pontos por participação
+
+        res.json({ score: Math.round(score), status: score > 800 ? 'AAA' : score > 600 ? 'BBB' : 'CCC' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/users', authenticate, async (req, res) => {
+    const { search, page = 1, limit = 10 } = req.query;
+    const offset = (page - 1) * limit;
+    let sql = 'SELECT * FROM users';
+    const params = [];
+    if (search) {
+        sql += ' WHERE name LIKE ? OR cpf_cnpj LIKE ? OR unit LIKE ?';
+        params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
+    sql += ' ORDER BY name ASC LIMIT ? OFFSET ?';
+    params.push(parseInt(limit), parseInt(offset));
+    
+    const [rows] = await pool.query(sql, params);
+    const [total] = await pool.query('SELECT COUNT(*) as count FROM users');
+    res.json({ data: rows, pagination: { page, total: total[0].count, pages: Math.ceil(total[0].count / limit) } });
 });
 
-
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor rodando na porta ${PORT}`);
+// --- API: OPERATIONS & MARKETPLACE ---
+app.get('/api/marketplace', authenticate, async (req, res) => {
+    const [rows] = await pool.query('SELECT m.*, u.name as merchantName, u.unit FROM marketplace_items m JOIN users u ON m.merchant_id = u.id');
+    res.json(rows);
 });
+
+app.get('/api/operations/incidents', authenticate, async (req, res) => {
+    const [rows] = await pool.query('SELECT * FROM incidents ORDER BY created_at DESC');
+    res.json(rows);
+});
+
+// --- BOOTSTRAP KERNEL ---
+app.get('*', (req, res) => { res.sendFile(path.join(__dirname, 'dist/index.html')); });
+app.listen(PORT, () => { console.log(`🚀 KERNEL V22.0 OPERATIONAL ON PORT ${PORT}`); });

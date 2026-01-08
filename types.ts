@@ -1,6 +1,10 @@
 
 import React from 'react';
 
+/**
+ * S.I.E PRO - ENUMS DE GOVERNANÇA (RBAC & STATUS)
+ * Protocolo SRE V22.0
+ */
 export enum UserRole {
   ADMIN = 'ADMIN',
   PRESIDENT = 'PRESIDENT',
@@ -12,324 +16,259 @@ export enum UserRole {
   COUNCIL = 'COUNCIL'
 }
 
-export interface SystemInfo {
-  name: string;
-  cnpj: string;
-  address: string;
-  email: string;
-  phone: string;
-  logoUrl?: string;
-  primaryColor?: string;
-  website?: string;
-  registrationMode?: 'AUTOMATIC' | 'APPROVAL';
-  enableMaps?: boolean;
-  enableQuestionnaire?: boolean; // Nova configuração
-}
+export type UserStatus = 'ACTIVE' | 'PENDING' | 'BANNED' | 'VALIDATION_REQUIRED';
+export type SocialTag = 'BAIXA_RENDA' | 'IDOSO_SOLO' | 'PCD' | 'AJUDA_URGENTE' | 'CANDIDATO_COMERCIO' | 'RISCO_SANEAMENTO' | 'NENHUMA';
+export type FinancialStatus = 'PAID' | 'PENDING' | 'OVERDUE' | 'CANCELLED' | 'PARTIAL';
+export type SurveyStatus = 'DRAFT' | 'ACTIVE' | 'CLOSED' | 'SCHEDULED';
+export type AssetStatus = 'PERFEITO' | 'BOM' | 'MANUTENÇÃO' | 'DEPRECIADO';
+export type ProjectStatus = 'PLANNING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+export type IncidentPriority = 'LOW' | 'MEDIUM' | 'HIGH';
+export type IncidentStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED';
 
-export interface UserFinancialSettings {
-  monthlyFee: number;
-  dueDay: number;
-  isDonor: boolean;
-  donationAmount?: number;
-  autoGenerateCharge: boolean;
-}
-
-// Interface detalhada do Questionário Social
+/**
+ * S.I.E PRO - SOCIAL & DEMOGRÁFICO
+ */
 export interface SocialQuestionnaireData {
-  // 1. Domicílio
-  residenceType?: 'Casa' | 'Sobrado' | 'Apartamento' | 'Barraco' | 'Outros';
-  residenceOwnership?: 'Próprio' | 'Alugado' | 'Cedido' | 'Ocupação';
+  residenceType?: string;
+  residenceOwnership?: string;
   residentsCount?: number;
-  childrenCount?: number; // 0-12
-  teenCount?: number; // 13-17
-  adultCount?: number; // 18-59
-  seniorCount?: number; // 60+
+  childrenCount?: number;
+  adultCount?: number;
+  seniorCount?: number;
   hasDisabledPerson?: boolean;
   disabledPersonDetail?: string;
-  animals?: string; // Cães, Gatos...
-
-  // 2. Econômico & Infra
-  incomeRange?: '0-600' | '601-1200' | '1201-2500' | '2501-5000' | '5001+';
-  incomeSource?: 'Formal' | 'Informal' | 'Autônomo' | 'Benefícios' | 'Sem rendimento';
-  socialBenefit?: 'Bolsa Família' | 'BPC-LOAS' | 'Auxílio Municipal' | 'Nenhum';
-  waterSupply?: 'Regular' | 'Irregular' | 'Ausente';
+  incomeRange?: string;
+  incomeSource?: string;
+  waterSupply?: string;
+  sewage?: string;
+  electricity?: string;
   trashCollection?: boolean;
-  sewage?: 'Rede Básica' | 'Fossa' | 'Céu Aberto';
-  electricity?: 'Regular' | 'Irregular' | 'Ausente';
-  internet?: 'Fibra' | 'Rádio' | 'Móvel' | 'Não possui';
-  publicTransport?: boolean;
-
-  // 3. Individual/Saúde
-  educationLevel?: 'Sem escolaridade' | 'Fundamental' | 'Médio' | 'Técnico' | 'Superior' | 'Pós';
-  isStudent?: boolean;
-  workStatus?: 'Formal' | 'Autônomo' | 'Informal' | 'Desempregado' | 'Aposentado';
+  educationLevel?: string;
+  workStatus?: string;
   chronicDisease?: string;
   continuousMedication?: boolean;
-  
-  // 4. Comércio (Se aplicável)
   isMerchant?: boolean;
   businessName?: string;
   businessType?: string;
+  businessRevenue?: string;
   hasLicense?: boolean;
-  businessRevenue?: '< 2k' | '2k-5k' | '5k-10k' | '10k-50k' | '50k+';
-  communityInterest?: string[];
-
-  // 5. Indicadores Sociais
-  urgentNeed?: 'Alimento' | 'Saúde' | 'Habitação' | 'Emprego' | 'Nenhuma';
+  urgentNeed?: string;
   socialRisk?: boolean;
   childrenOutOfSchool?: number;
   unemployedCount?: number;
   seniorsAlone?: number;
+  tags?: SocialTag[];
 }
 
+/**
+ * S.I.E PRO - IDENTIDADE E MEMBROS
+ */
 export interface User {
-  id: string;
+  id: string | number;
   name: string;
-  username?: string; // For login
-  password?: string; // For login (mock)
+  username: string;
   unit?: string;
   role: UserRole | string;
-  avatarUrl?: string;
-  email?: string;
-  cpfCnpj?: string;
-  rg?: string; // RG added
-  birthDate?: string; // BirthDate added
-  phone?: string;
-  address?: string;
-  admissionDate?: string;
-  notes?: string;
-  documents?: { name: string; type: string; date: string }[];
+  status: UserStatus;
   active: boolean;
-  qrCodeData?: string;
-  financialSettings?: UserFinancialSettings;
-  financialStatus?: 'OK' | 'PENDING' | 'OVERDUE';
-  profileCompletion?: number; // 0 to 100
-  permissions?: string[]; // List of specific permission IDs granted to this user
-  socialData?: SocialQuestionnaireData; // Dados do questionário
+  cpf_cnpj: string;
+  rg?: string;
+  rg_issuing_body?: string;
+  email?: string;
+  phone?: string;
+  avatar_url?: string;
+  socialData?: SocialQuestionnaireData;
+  lgpd_consent?: boolean;
+  permissions?: string[];
 }
 
-export interface Permission {
-  id: string;
-  label: string;
-  module: string;
-}
-
-export interface RolePermission {
-  role: string;
-  permissions: string[]; // List of permission IDs
+/**
+ * S.I.E PRO - OPERACIONAL
+ */
+export interface UnitData {
+  id: string | number;
+  residentName: string;
+  unit: string;
+  tags: SocialTag[];
+  coordinates: { lat: number; lng: number };
+  block?: string; 
+  number?: string;
 }
 
 export interface FinancialRecord {
-  id: string;
+  id: string | number;
   description: string;
-  amount: number;
+  amount: number | string;
   type: 'INCOME' | 'EXPENSE';
-  status: 'PAID' | 'PENDING' | 'OVERDUE';
-  date: string;
   category: string;
-  userId?: string; // Link to user
-  dueDate?: string;
-  attachmentUrl?: string;
+  date: string;
+  status: FinancialStatus;
 }
 
 export interface Bill {
-  id: string;
-  userId: string;
-  userName: string;
-  unit: string;
+  id: string | number;
+  description: string;
   amount: number;
   dueDate: string;
-  status: 'PAID' | 'PENDING' | 'OVERDUE';
-  barcode: string;
-  month: string;
+  status: string;
 }
 
-export interface Notice {
-  id: string;
+export interface SystemInfo {
+  name: string;
+  cnpj?: string;
+  address?: string;
+  email?: string;
+  phone?: string;
+  website?: string;
+  primaryColor?: string;
+  registrationMode?: string;
+  logoUrl?: string;
+}
+
+export interface Alert {
+  id: string | number;
   title: string;
   content: string;
   urgency: 'LOW' | 'MEDIUM' | 'HIGH';
   date: string;
-  author: string;
-  attachments?: string[];
 }
 
-export interface Alert {
-  id: string;
+export interface Notice {
+  id: string | number;
   title: string;
-  message: string;
-  type: 'INFO' | 'WARNING' | 'EMERGENCY' | 'SUCCESS';
-  target: 'ALL' | 'BLOCK_A' | 'BLOCK_B' | 'STAFF' | 'RESIDENTS';
-  channels: ('APP' | 'EMAIL' | 'WHATSAPP')[];
+  content: string;
+  urgency: 'LOW' | 'MEDIUM' | 'HIGH';
   date: string;
-  sentBy: string;
-  readCount?: number;
 }
-
-export interface Incident {
-  id: string;
-  title: string;
-  description?: string;
-  location: string;
-  status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED';
-  reportedBy: string;
-  date: string;
-  priority: 'LOW' | 'MEDIUM' | 'HIGH';
-  photoUrl?: string;
-}
-
-export type SocialTag = 'LOW_INCOME' | 'ELDERLY_ALONE' | 'DISABILITY' | 'HELP_REQUEST' | 'NONE';
-
-export interface UnitData {
-  id: string;
-  block: string;
-  number: string;
-  status: 'OK' | 'DEBT' | 'WARNING';
-  residentName: string;
-  vulnerabilityLevel?: 'LOW' | 'MEDIUM' | 'HIGH'; 
-  tags: SocialTag[]; // Array of social markers
-  coordinates: { lat: number; lng: number }; // Geographic coordinates
-  cep?: string; // Added CEP property
-}
-
-export interface Poll {
-  id: string;
-  question: string;
-  options: { id: string; text: string; votes: number }[];
-  totalVotes: number;
-  status: 'ACTIVE' | 'CLOSED';
-  endDate: string;
-  externalLink?: string;
-}
-
-export interface Reservation {
-  id: string;
-  area: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  resident: string;
-  status: 'CONFIRMED' | 'PENDING' | 'CANCELLED';
-}
-
-export interface Visitor {
-    id: string;
-    name: string;
-    document: string;
-    type: 'VISITOR' | 'DELIVERY' | 'SERVICE';
-    destinationUnit: string;
-    entryTime: string;
-    exitTime?: string;
-    registeredBy: string;
-    photoUrl?: string;
-}
-
-export interface MaintenanceRecord {
-    id: string;
-    title: string;
-    type: 'PREVENTIVE' | 'CORRECTIVE';
-    status: 'SCHEDULED' | 'COMPLETED' | 'OVERDUE';
-    date: string;
-    cost?: number;
-    assignedTo: string;
-}
-
-// --- AGENDA / TIMELINE TYPES ---
-export interface AgendaEvent {
-  id: string;
-  title: string;
-  description: string;
-  date: string; // ISO String
-  type: 'MEETING' | 'MAINTENANCE' | 'EVENT' | 'DEADLINE';
-  location?: string;
-  status: 'UPCOMING' | 'COMPLETED' | 'CANCELLED';
-  createdBy: string;
-  reminder?: 'NONE' | '1_HOUR' | '24_HOURS'; // New field for reminders
-}
-
-// --- SURVEYS & CENSUS TYPES ---
 
 export interface SurveyQuestion {
-    id: string;
-    text: string;
-    type: 'text' | 'choice' | 'multiple' | 'rating';
-    options?: string[];
+  id: string | number;
+  text: string;
+  type: 'text' | 'choice' | 'boolean';
+  options?: string[];
+  mapping_tag?: string;
 }
 
 export interface Survey {
-    id: string;
-    title: string;
-    description: string;
-    type: 'CENSUS' | 'SATISFACTION' | 'VOTING';
-    status: 'DRAFT' | 'ACTIVE' | 'CLOSED';
-    startDate: string;
-    endDate: string;
-    questions: SurveyQuestion[];
-    responseCount: number;
-    externalAccess: boolean;
-    externalLink?: string;
+  id: string | number;
+  title: string;
+  description: string;
+  type: string;
+  status: string;
+  questions: SurveyQuestion[];
 }
 
-// --- ID CARD STUDIO TYPES ---
+export interface AgendaEvent {
+  id: string | number;
+  title: string;
+  description: string;
+  date: string;
+  type: 'MEETING' | 'MAINTENANCE' | 'EVENT' | 'DEADLINE';
+  status: 'UPCOMING' | 'COMPLETED' | 'CANCELLED';
+}
 
-export type CardElementType = 'text-static' | 'text-dynamic' | 'image' | 'qrcode' | 'shape';
+export interface Reservation {
+  id: string | number;
+  title: string;
+  date: string;
+  status: string;
+}
+
+export interface Incident {
+  id: string | number;
+  title: string;
+  location: string;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH';
+  status: string;
+}
+
+export interface Visitor {
+  id: string | number;
+  name: string;
+}
+
+export interface MaintenanceRecord {
+  id: string | number;
+  title: string;
+  description?: string;
+}
+
+export interface OfficialDocument {
+  id: string | number;
+  title: string;
+  content: string;
+  type: string;
+  status: string;
+  updated_at: string;
+}
+
+export interface CommunityProject {
+  id: string | number;
+  title: string;
+  description: string;
+  budget: number | string;
+  spent: number | string;
+  progress: number;
+  status: string;
+  startDate: string;
+  category: string;
+}
+
+export interface MarketItem {
+  id: string | number;
+  title: string;
+  description: string;
+  category: 'FOOD' | 'SERVICE' | 'GOODS';
+  price?: number;
+  whatsapp?: string;
+  merchantName?: string;
+  merchant_id?: string | number;
+  unit?: string;
+}
 
 export interface CardElement {
   id: string;
-  type: CardElementType;
-  label: string; // Internal label for the editor
-  field?: keyof User | 'system.name' | 'system.logo' | 'system.address' | 'system.cnpj'; // For dynamic data
-  content?: string; // For static text
-  x: number; // Percentage 0-100
-  y: number; // Percentage 0-100
-  width?: number; // px or % (if shape)
-  height?: number; // px or % (if shape)
-  style: React.CSSProperties & {
-      textAlign?: 'left' | 'center' | 'right';
-  };
+  type: 'text-dynamic' | 'image' | 'shape';
+  label: string;
+  x: number;
+  y: number;
   layer: 'front' | 'back';
+  style: any;
+  field?: string;
+  width?: number;
+  height?: number;
 }
 
 export interface IdCardTemplate {
   id: string;
   name: string;
-  width: number; // usually in mm or px ratio
+  width: number;
   height: number;
   orientation: 'landscape' | 'portrait';
-  frontBackground: string; // Color or Image URL
-  backBackground: string; // Color or Image URL
+  frontBackground: string;
+  backBackground: string;
   elements: CardElement[];
 }
 
-// --- DEMOGRAPHIC ANALYSIS TYPES ---
-export interface DemographicStats {
-    totalPopulation: number;
-    averageAge: number;
-    averageIncome: number;
-    unemploymentRate: number;
-    ageDistribution: {
-        children: number; // 0-14
-        adults: number; // 15-64
-        seniors: number; // 65+
-    };
-    infrastructureNeeds: {
-        sanitation: number;
-        water: number;
-        lighting: number;
-        trashCollection: number;
-    };
+export interface Asset {
+  id: string | number;
+  name: string;
+  category: string;
+  value: number;
+  status: 'PERFEITO' | 'BOM' | 'MANUTENÇÃO' | 'DEPRECIADO';
+  date_acquired: string;
+  responsible_id?: string | number;
+  responsibleName?: string;
 }
 
-// --- OFFICIAL DOCUMENTS (NEW) ---
-export interface OfficialDocument {
-    id: string;
-    title: string;
-    type: 'OFICIO' | 'ATA' | 'MEMORANDO' | 'CIRCULAR' | 'DECLARACAO';
-    content: string; // HTML Content
-    createdAt: string;
-    updatedAt: string;
-    referenceFile?: string; // Name of the uploaded reference model
-    status: 'DRAFT' | 'FINAL';
-    pageSize?: 'A4' | 'LETTER'; // Configuração de Tamanho
-    orientation?: 'PORTRAIT' | 'LANDSCAPE'; // Configuração de Orientação
+export interface AIKey {
+  id: string | number;
+  label: string;
+  key_value: string;
+  provider: string;
+  tier: 'FREE' | 'PAID';
+  priority: number;
+  status: 'ACTIVE' | 'ERROR' | 'QUOTA_EXCEEDED' | 'INVALID';
+  error_count: number;
+  last_checked: string;
 }
